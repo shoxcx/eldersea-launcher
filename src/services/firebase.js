@@ -1,5 +1,12 @@
 const DB_URL = "https://eldersea-53660-default-rtdb.firebaseio.com";
 
+async function hashPassword(pwd) {
+  const msgUint8 = new TextEncoder().encode(pwd);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export const firebaseService = {
   // Check if a user exists by pseudo
   async checkUserExists(pseudo) {
@@ -27,11 +34,13 @@ export const firebaseService = {
   // Register a new user
   async register(userData) {
     try {
+      const hashedPwd = await hashPassword(userData.password);
       const response = await fetch(`${DB_URL}/users.json`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...userData,
+          password: hashedPwd,
           createdAt: new Date().toLocaleDateString(),
           isPremium: true
         })
@@ -55,7 +64,8 @@ export const firebaseService = {
       
       if (userEntry) {
         const [id, user] = userEntry;
-        if (user.password === password) {
+        const hashedInput = await hashPassword(password);
+        if (user.password === hashedInput) {
           return { ...user, id };
         } else {
           throw new Error("Mot de passe incorrect");
@@ -79,10 +89,11 @@ export const firebaseService = {
       const userEntry = Object.entries(allData).find(([id, u]) => u.pseudo === pseudo);
       if (userEntry) {
         const [id] = userEntry;
+        const hashedNew = await hashPassword(newPassword);
         await fetch(`${DB_URL}/users/${id}.json`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: newPassword })
+          body: JSON.stringify({ password: hashedNew })
         });
         return true;
       }
