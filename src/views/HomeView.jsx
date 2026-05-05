@@ -75,7 +75,6 @@ const HomeView = ({ onOpenAuth }) => {
         padding: '50px 50px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px', flexShrink: 0 
       }}>
         <div className="hero-logo-wrap" style={{ position: 'relative', textAlign: 'center', padding: '20px' }}>
-          <div className="hero-logo-glow" style={{ position: 'absolute', inset: '-40px', background: 'radial-gradient(circle, rgba(212,175,55,0.25) 0%, transparent 75%)' }} />
           <img 
             src="/logo.png" 
             alt="ElderSea Logo" 

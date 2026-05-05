@@ -2,10 +2,16 @@ import React from 'react';
 import { useSettingsStore } from '../store/useStore';
 import { translations } from '../translations';
 import { X, Cpu, Globe, Monitor } from 'lucide-react';
+import CustomDropdown from './CustomDropdown';
 
 const SettingsModal = ({ onClose }) => {
   const { ram, setRam, language, setLanguage, launchOnStartup, setLaunchOnStartup, backgroundMode, setBackgroundMode } = useSettingsStore();
   const t = translations[language] || translations['fr'];
+
+  const langOptions = [
+    { value: 'fr', label: 'Français' },
+    { value: 'en', label: 'English' }
+  ];
 
   const handleSave = () => {
     onClose();
@@ -37,14 +43,15 @@ const SettingsModal = ({ onClose }) => {
             {t.settings.toUpperCase()}
           </h2>
 
-          <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
+          <div style={{ flex: 1, overflowY: 'visible', paddingRight: '10px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
               <div className="setting-group">
                 <label className="setting-label"><Globe size={14} /> {t.language}</label>
-                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="setting-input">
-                  <option value="fr">Français</option>
-                  <option value="en">English</option>
-                </select>
+                <CustomDropdown 
+                  value={language} 
+                  onChange={setLanguage} 
+                  options={langOptions} 
+                />
               </div>
 
               <div className="setting-group">
