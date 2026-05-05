@@ -28,3 +28,4 @@ dist-ssr
 test_syntax.js
 elder-sea-launcher.html
 .gemini
+electron/config.json

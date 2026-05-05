@@ -191,8 +191,24 @@ async function setupFabric(gameRoot, mcVersion, loaderVersion) {
 async function syncSFTP(gameRoot) {
   const sftp = new SftpClient();
   const remoteRoot = '/home/pierre/ElderSea/launcher';
+  
+  // Chargement sécurisé de la config
+  let config = { sftp: {} };
   try {
-    await sftp.connect({ host: '51.210.14.105', port: 22, username: 'pierre', password: 'ZDiLoQpFC25RT8', readyTimeout: 15000 });
+    const configPath = path.join(__dirname, 'config.json');
+    if (fs.existsSync(configPath)) {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    }
+  } catch (e) { console.error("Erreur chargement config.json"); }
+
+  try {
+    await sftp.connect({ 
+      host: config.sftp.host, 
+      port: config.sftp.port, 
+      username: config.sftp.username, 
+      password: config.sftp.password, 
+      readyTimeout: 15000 
+    });
     
     async function syncDir(remoteDir, localDir) {
         if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
