@@ -49,72 +49,11 @@ const TopBar = ({ onOpenAuth, onOpenSettings, setActiveTab, onToggleProfile, isP
     }}>
       <div style={{ position: 'absolute', inset: 0, WebkitAppRegion: 'drag', zIndex: 0 }} />
 
-      {/* Empty spacer or Left side content if needed */}
-      <div></div>
-
-      <div className="user-controls-wrapper" style={{ 
+      <div className="window-controls-wrapper" style={{ 
         display: 'flex', gap: '25px', alignItems: 'center',
         WebkitAppRegion: 'no-drag', position: 'relative', zIndex: 1001,
-        pointerEvents: 'auto'
+        pointerEvents: 'auto', marginLeft: 'auto'
       }}>
-        {!isLoggedIn ? (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <div className="topbar-pill" onClick={onOpenAuth} style={pillStyle}>{t.connexion}</div>
-            <div className="topbar-pill" onClick={onOpenAuth} style={{ ...pillStyle, borderColor: 'var(--purple)', color: 'var(--crystal)', fontWeight: 700 }}>{t.inscription}</div>
-          </div>
-        ) : (
-          <div style={{ position: 'relative' }}>
-            <div 
-              className="topbar-user-info interactive-element" 
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleProfile(e);
-              }}
-              style={{ 
-                display: 'flex', alignItems: 'center', gap: '12px', padding: '6px 14px 6px 6px',
-                background: 'linear-gradient(90deg, rgba(20,25,35,0.8) 0%, rgba(10,13,26,0.6) 100%)',
-                border: '1px solid rgba(212,175,55,0.4)',
-                borderLeft: '4px solid #d4af37',
-                borderRadius: '4px', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)'
-              }}
-            >
-              <div style={{ width: '36px', height: '36px', borderRadius: '2px', overflow: 'hidden', border: '1px solid rgba(212,175,55,0.6)', background: 'rgba(10,13,26,0.6)' }}>
-                <img src={getSkinHead()} alt="avatar" style={{ width: '100%', height: '100%', imageRendering: 'pixelated' }} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                <span className="cinzel" style={{ fontSize: '13px', fontWeight: 900, color: '#f3e5ab', letterSpacing: '1px', textShadow: '1px 1px 2px #000' }}>
-                  {getPseudo().toUpperCase()}
-                </span>
-                <span style={{ fontSize: '9px', color: isPremium ? '#34d399' : '#f87171', letterSpacing: '0.5px', fontWeight: 600 }}>
-                  {isPremium ? 'PREMIUM' : 'CRACK'}
-                </span>
-              </div>
-              <ChevronDown size={14} color="#d4af37" style={{ transform: isProfileOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s ease', marginLeft: '4px' }} />
-            </div>
-
-            {isProfileOpen && (
-              <div className="profile-dropdown glass-panel fade-in" style={{
-                position: 'absolute', top: 'calc(100% + 12px)', right: 0, width: '220px', zIndex: 2005, padding: '8px',
-                boxShadow: '0 10px 40px rgba(0,0,0,0.6)', background: 'var(--bg-panel)',
-                WebkitAppRegion: 'no-drag', pointerEvents: 'auto'
-              }}>
-                <div className="dropdown-item" onClick={(e) => { 
-                  e.stopPropagation(); 
-                  setActiveTab('profile'); 
-                  onToggleProfile(e); 
-                }}>
-                  <User size={16} /> <span>{t.profile}</span>
-                </div>
-                <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '8px 4px' }} />
-                <div className="dropdown-item logout" onClick={(e) => { e.stopPropagation(); logout(); onToggleProfile(e); }} style={{ color: '#f87171' }}>
-                  <LogOut size={16} /> <span>{t.logout}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* ── PIRATE THEMED WINDOW CONTROLS ── */}
         <div className="window-controls" style={{ display: 'flex', gap: '12px' }}>
           <button 
@@ -155,8 +94,8 @@ const TopBar = ({ onOpenAuth, onOpenSettings, setActiveTab, onToggleProfile, isP
 const pillStyle = {
   padding: '8px 22px', borderRadius: '99px', fontSize: '10.5px',
   border: '1px solid var(--border)', color: 'var(--text-muted)',
-  cursor: 'pointer', transition: 'all 0.3s ease', letterSpacing: '1.5px',
-  fontFamily: 'Cinzel, serif', fontWeight: 600
+  cursor: 'pointer', transition: 'all 0.3s ease', letterSpacing: '1px',
+  fontFamily: 'Outfit, sans-serif', fontWeight: 700
 };
 
 const btnStyle = {

@@ -28,6 +28,11 @@
   padding: 0;
   box-sizing: border-box;
   -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+img {
+  -webkit-user-drag: none;
 }
 
 /* ── Custom Scrollbar ── */
@@ -77,8 +82,10 @@ body {
   inset: 0;
   z-index: 0;
   pointer-events: none;
+  filter: blur(6px);
+  transform: scale(1.05);
   background:
-    linear-gradient(rgba(9, 12, 16, 0.7), rgba(9, 12, 16, 0.7)),
+    linear-gradient(rgba(9, 12, 16, 0.5), rgba(9, 12, 16, 0.5)),
     url('/bg-pirate.png') center/cover no-repeat;
 }
 
@@ -280,11 +287,11 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(15px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .fade-in { animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
 
-.cinzel { font-family: 'Cinzel', serif; }
-.cinzel-dec { font-family: 'Cinzel Decorative', serif; }
+.cinzel { font-family: 'Outfit', sans-serif; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+.cinzel-dec { font-family: 'Outfit', sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; }
 

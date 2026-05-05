@@ -1,11 +1,37 @@
 import React from 'react';
 import { useSettingsStore, useAuthStore } from '../store/useStore';
 import { translations } from '../translations';
-import { Home, Package, Camera, ShoppingBag, Settings } from 'lucide-react';
+import { Home, Package, Camera, ShoppingBag, Settings, User, ChevronDown, LogOut, ChevronUp } from 'lucide-react';
 
-const Sidebar = ({ activeTab, setActiveTab, onOpenSettings }) => {
+const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfileOpen, onToggleProfile }) => {
   const { language } = useSettingsStore();
+  const { user, isLoggedIn, logout } = useAuthStore();
   const t = translations[language] || translations['fr'];
+  const [isPremium, setIsPremium] = React.useState(false);
+
+  React.useEffect(() => {
+    const checkStatus = async () => {
+      const pseudo = getPseudo();
+      if (pseudo && pseudo !== t.player) {
+        const result = await window.ipcRenderer.invoke('check-mojang', pseudo);
+        setIsPremium(result);
+      }
+    };
+    checkStatus();
+  }, [user]);
+
+  const getPseudo = () => {
+    if (typeof user === 'string') return user;
+    return user?.pseudo || t.player;
+  };
+
+  const getSkinHead = () => {
+    const pseudo = getPseudo();
+    if (pseudo !== t.player) {
+      return `https://mc-heads.net/avatar/${pseudo}/64`;
+    }
+    return 'https://mc-heads.net/avatar/Steve/64';
+  };
 
   const menuItems = [
     { id: 'home', label: t.home, icon: <Home size={18} /> },
@@ -50,7 +76,52 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings }) => {
         ))}
       </div>
 
-      <div className="sidebar-bottom" style={{ marginTop: 'auto', padding: '16px', borderTop: '1px solid var(--border)' }}>
+      <div className="sidebar-bottom" style={{ marginTop: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        
+        {/* ── USER INFO / LOGIN ── */}
+        <div className="sidebar-auth-wrapper" style={{ paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
+          {!isLoggedIn ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div className="sidebar-auth-btn" onClick={onOpenAuth} style={{ ...authBtnStyle, background: 'rgba(212,175,55,0.1)', color: 'var(--crystal)', borderColor: 'var(--purple)' }}>{t.connexion}</div>
+              <div className="sidebar-auth-btn" onClick={onOpenAuth} style={authBtnStyle}>{t.inscription}</div>
+            </div>
+          ) : (
+            <div style={{ position: 'relative' }}>
+              <div 
+                className="sidebar-user-pill"
+                onClick={(e) => { e.stopPropagation(); onToggleProfile(); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '10px', padding: '8px',
+                  background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
+                  borderRadius: '12px', cursor: 'pointer', transition: 'all 0.3s'
+                }}
+              >
+                <img src={getSkinHead()} alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '4px', imageRendering: 'pixelated' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#f3e5ab', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getPseudo().toUpperCase()}</div>
+                  <div style={{ fontSize: '9px', color: isPremium ? '#34d399' : '#f87171', fontWeight: 700 }}>{isPremium ? 'PREMIUM' : 'CRACK'}</div>
+                </div>
+                <ChevronUp size={14} color="var(--text-dim)" style={{ transform: isProfileOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }} />
+              </div>
+
+              {isProfileOpen && (
+                <div className="profile-dropdown-sidebar glass-panel fade-in" style={{
+                  position: 'absolute', bottom: 'calc(100% + 10px)', left: 0, right: 0, zIndex: 2005, padding: '6px',
+                  boxShadow: '0 -10px 40px rgba(0,0,0,0.6)', background: 'var(--bg-panel)'
+                }}>
+                  <div className="dropdown-item" onClick={(e) => { e.stopPropagation(); setActiveTab('profile'); onToggleProfile(); }}>
+                    <User size={14} /> <span>{t.profile}</span>
+                  </div>
+                  <div style={{ height: '1px', background: 'rgba(255,255,255,0.05)', margin: '6px 4px' }} />
+                  <div className="dropdown-item" onClick={(e) => { e.stopPropagation(); logout(); onToggleProfile(); }} style={{ color: '#f87171' }}>
+                    <LogOut size={14} /> <span>{t.logout}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="settings-btn" onClick={onOpenSettings} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', color: 'var(--text-dim)', transition: 'all 0.25s' }}>
           <Settings size={18} />
           <span style={{ fontSize: '13px', fontWeight: 600 }}>{t.settings}</span>
@@ -65,9 +136,19 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings }) => {
         }
         .nav-shop:hover { color: #fbbf24 !important; }
         .settings-btn:hover { color: var(--crystal); background: rgba(255,255,255,0.05); }
+        .sidebar-user-pill:hover { background: rgba(212,175,55,0.08) !important; border-color: var(--purple) !important; }
+        .sidebar-auth-btn { padding: 8px; text-align: center; border-radius: 8px; font-size: 11px; font-weight: 700; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px; }
+        .sidebar-auth-btn:hover { background: rgba(255,255,255,0.05); border-color: var(--text-dim); }
+        .dropdown-item { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 12px; }
+        .dropdown-item:hover { background: rgba(255,255,255,0.05); color: var(--purple-light); }
       `}} />
     </aside>
   );
+};
+
+const authBtnStyle = {
+  background: 'rgba(0,0,0,0.2)',
+  color: 'var(--text-muted)'
 };
 
 export default Sidebar;

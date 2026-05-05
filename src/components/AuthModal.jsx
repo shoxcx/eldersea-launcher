@@ -235,10 +235,10 @@ const AuthModal = ({ onClose }) => {
       </div>
 
       <style dangerouslySetInnerHTML={{ __html: `
-        .auth-tab { flex:1; padding:9px; text-align:center; cursor:pointer; border-radius:8px; font-size:11px; font-family:'Cinzel',serif; font-weight:600; letter-spacing:1px; transition:all 0.25s; color:var(--text-dim); }
+        .auth-tab { flex:1; padding:9px; text-align:center; cursor:pointer; border-radius:8px; font-size:11px; font-family:'Outfit',sans-serif; font-weight:600; letter-spacing:1px; transition:all 0.25s; color:var(--text-dim); }
         .auth-tab.active { background:linear-gradient(135deg, var(--purple-glow), var(--purple)); color:white; box-shadow:0 0 20px rgba(212,175,55,0.4); }
         .form-group { margin-bottom:18px; }
-        .form-label { display:block; font-size:10px; letter-spacing:2px; color:var(--text-muted); margin-bottom:7px; font-family:'Cinzel',serif; text-transform:uppercase; font-weight:700; }
+        .form-label { display:block; font-size:10px; letter-spacing:2px; color:var(--text-muted); margin-bottom:7px; font-family:'Outfit',sans-serif; text-transform:uppercase; font-weight:700; }
         .form-input { width:100%; padding:12px 16px; background:var(--bg-dark); border:1px solid var(--border); border-radius:10px; color:var(--text-primary); font-size:14px; outline:none; transition:all 0.2s; }
         .form-input:focus { border-color:var(--purple-light); box-shadow:0 0 0 3px rgba(212,175,55,0.1); }
       `}} />

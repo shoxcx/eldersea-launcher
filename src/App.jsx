@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { X, Lightbulb } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import HomeView from './views/HomeView';
@@ -74,6 +75,8 @@ function App() {
     }
   }, []);
 
+  const [selectedNews, setSelectedNews] = useState(null);
+
   const handleAppClick = () => {
     if (isProfileOpen) setIsProfileOpen(false);
   };
@@ -81,9 +84,17 @@ function App() {
   return (
     <div className="app-container" onClick={handleAppClick} style={{ 
       display: 'flex', height: '100vh', width: '100vw', background: 'var(--bg-dark)',
-      overflow: 'hidden', color: 'var(--text-primary)', fontFamily: 'Lato, sans-serif'
+      overflow: 'hidden', color: 'var(--text-primary)', fontFamily: 'Outfit, sans-serif'
     }}>
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onOpenSettings={() => setIsSettingsOpen(true)} />
+      <div className="bg-layer" />
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
+        isProfileOpen={isProfileOpen}
+        onToggleProfile={() => setIsProfileOpen(!isProfileOpen)}
+      />
       
       <main className="main-content">
         <TopBar 
@@ -95,7 +106,12 @@ function App() {
         />
         
         <div className="view-container fade-in" key={activeTab}>
-          {activeTab === 'home' && <HomeView onOpenAuth={() => setIsAuthModalOpen(true)} />}
+          {activeTab === 'home' && (
+            <HomeView 
+              onOpenAuth={() => setIsAuthModalOpen(true)} 
+              setSelectedNews={setSelectedNews}
+            />
+          )}
           {activeTab === 'mods' && <ModsView />}
           {activeTab === 'screenshots' && <ScreenshotsView setFullscreen={setFullscreenImage} />}
           {activeTab === 'shop' && <ShopView />}
@@ -161,6 +177,73 @@ function App() {
           100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(212,175,55,0); }
         }
       `}} />
+      {/* ── GLOBAL NEWS MODAL ── */}
+      {selectedNews && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(5, 7, 10, 0.95)', backdropFilter: 'blur(15px)',
+          display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px'
+        }}>
+          <div style={{
+            width: '100%', maxWidth: '850px', maxHeight: '85vh', background: 'var(--bg-panel)',
+            borderRadius: '16px', border: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column',
+            overflow: 'hidden', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8)',
+            animation: 'fadeIn 0.3s ease'
+          }}>
+            <button 
+              onClick={() => setSelectedNews(null)}
+              style={{
+                position: 'absolute', top: '20px', right: '20px', zIndex: 10, width: '36px', height: '36px',
+                borderRadius: '50%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)',
+                color: 'white', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer'
+              }}
+            >
+              <X size={20} />
+            </button>
+
+            <div style={{
+              width: '100%', height: '300px', backgroundImage: selectedNews.image ? `url(${selectedNews.image})` : 'none',
+              backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative',
+              display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '40px',
+              borderBottom: '1px solid var(--glass-border)'
+            }}>
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, var(--bg-panel) 0%, transparent 100%)' }}></div>
+              <div style={{ position: 'relative', zIndex: 2 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                  <span style={{ padding: '6px 12px', background: 'rgba(212,175,55,0.15)', border: '1px solid var(--purple)', color: 'var(--purple)', borderRadius: '6px', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                    {selectedNews.tag || 'INFO'}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: 600 }}>{selectedNews.date ? new Date(selectedNews.date).toLocaleDateString('fr-FR') : ''}</span>
+                </div>
+                <h1 className="cinzel" style={{ margin: 0, fontSize: '38px', fontWeight: 900, color: 'white', textShadow: '0 4px 8px rgba(0,0,0,0.8)' }}>
+                  {selectedNews.title || 'Nouvelle'}
+                </h1>
+              </div>
+            </div>
+
+            <div style={{ padding: '40px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: 1.8, marginBottom: '40px' }} dangerouslySetInnerHTML={{ __html: selectedNews.content || '' }}></div>
+              
+              {selectedNews.tip && (
+                <div style={{
+                  background: 'rgba(10, 13, 26, 0.8)', border: '1px solid rgba(212,175,55,0.3)', borderRadius: '12px',
+                  padding: '24px', position: 'relative', overflow: 'hidden'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--purple)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                      <Lightbulb size={18} color="#000" />
+                    </div>
+                    <span style={{ color: 'var(--purple)', fontWeight: 800, fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase' }}>Conseil de pro</span>
+                  </div>
+                  <div style={{ color: 'var(--text-primary)', fontSize: '14px', fontStyle: 'italic', lineHeight: 1.6 }}>
+                    {selectedNews.tip}
+                  </div>
+                  <Lightbulb size={120} color="var(--purple)" style={{ position: 'absolute', right: '-20px', bottom: '-40px', opacity: 0.05 }} />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

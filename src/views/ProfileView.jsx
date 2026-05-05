@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useAuthStore, useSettingsStore } from '../store/useStore';
 import { translations } from '../translations';
-import { firebaseService } from '../services/firebase';
-import { User, ShieldCheck, Mail, Calendar, Lock, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { firebaseService, hashPassword } from '../services/firebase';
+import { User, ShieldCheck, Mail, Calendar, Lock, Eye, EyeOff, CheckCircle, Key } from 'lucide-react';
 
 const ProfileView = () => {
   const { user, logout } = useAuthStore();
@@ -10,6 +10,7 @@ const ProfileView = () => {
   const t = translations[language] || translations['fr'];
   
   const [showPwd, setShowPwd] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [status, setStatus] = useState({ type: '', msg: '' });
@@ -28,13 +29,36 @@ const ProfileView = () => {
   if (!user) return null;
 
   const handleUpdatePassword = async () => {
-    if (!newPassword || newPassword !== confirmPassword) {
-      setStatus({ type: 'error', msg: 'Les mots de passe ne correspondent pas.' });
+    if (!currentPassword) {
+      setStatus({ type: 'error', msg: 'Veuillez saisir votre mot de passe actuel.' });
       return;
     }
+    if (!newPassword || newPassword !== confirmPassword) {
+      setStatus({ type: 'error', msg: 'Les nouveaux mots de passe ne correspondent pas.' });
+      return;
+    }
+    
     try {
+      setStatus({ type: '', msg: 'Vérification...' });
+      
+      // Récupérer l'utilisateur pour vérifier le mot de passe actuel
+      const res = await fetch(`https://eldersea-53660-default-rtdb.firebaseio.com/users.json`);
+      const allData = await res.json();
+      const userEntry = Object.entries(allData).find(([id, u]) => u.pseudo === user.pseudo);
+      
+      if (!userEntry) throw new Error("Utilisateur introuvable");
+      
+      const [id, dbUser] = userEntry;
+      const hashedCurrent = await hashPassword(currentPassword);
+      
+      if (dbUser.password !== hashedCurrent) {
+        setStatus({ type: 'error', msg: 'Mot de passe actuel incorrect.' });
+        return;
+      }
+
       await firebaseService.updatePassword(user.pseudo, newPassword);
       setStatus({ type: 'success', msg: 'Mot de passe mis à jour !' });
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (e) {
@@ -93,6 +117,17 @@ const ProfileView = () => {
             <h4 className="cinzel" style={{ fontSize: '14px', color: 'var(--purple-light)', marginBottom: '25px', letterSpacing: '2px' }}>{t.change_password}</h4>
             
             <div style={{ display: 'grid', gap: '15px' }}>
+              <div style={{ position: 'relative' }}>
+                <Key size={16} style={iconInputStyle} />
+                <input 
+                  type={showPwd ? "text" : "password"} 
+                  placeholder="Mot de passe actuel" 
+                  className="profile-input" 
+                  value={currentPassword} 
+                  onChange={(e) => setCurrentPassword(e.target.value)} 
+                />
+              </div>
+
               <div style={{ position: 'relative' }}>
                 <Lock size={16} style={iconInputStyle} />
                 <input 

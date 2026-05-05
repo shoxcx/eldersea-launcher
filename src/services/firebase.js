@@ -1,6 +1,6 @@
 const DB_URL = "https://eldersea-53660-default-rtdb.firebaseio.com";
 
-async function hashPassword(pwd) {
+export async function hashPassword(pwd) {
   const msgUint8 = new TextEncoder().encode(pwd);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
   const hashArray = Array.from(new Uint8Array(hashBuffer));

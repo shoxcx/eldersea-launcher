@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthStore, useSettingsStore } from '../store/useStore';
 import { translations } from '../translations';
-import { Play, X, Lightbulb } from 'lucide-react';
+import { Play, X, Lightbulb, ChevronDown } from 'lucide-react';
 
-const HomeView = ({ onOpenAuth }) => {
+const HomeView = ({ onOpenAuth, setSelectedNews }) => {
   const { user, isLoggedIn } = useAuthStore();
   const { ram, language } = useSettingsStore();
   const t = translations[language] || translations['fr'];
@@ -11,7 +11,6 @@ const HomeView = ({ onOpenAuth }) => {
   const [gameRunning, setGameRunning] = useState(false);
 
   const [newsList, setNewsList] = useState([]);
-  const [selectedNews, setSelectedNews] = useState(null);
 
   useEffect(() => {
     if (window.ipcRenderer) {
@@ -20,7 +19,6 @@ const HomeView = ({ onOpenAuth }) => {
         if (!running) setIsLaunching(false);
       });
 
-      // Vérification immédiate au montage du composant
       window.ipcRenderer.invoke('check-game-running').then(running => {
         setGameRunning(running);
       });
@@ -68,132 +66,148 @@ const HomeView = ({ onOpenAuth }) => {
     }
   };
 
+  const [scrollY, setScrollY] = useState(0);
+
+  const handleScroll = (e) => {
+    setScrollY(e.target.scrollTop);
+  };
+
+  const isScrolled = scrollY > 100;
+  // Smoother interpolation for scaling
+  const heroScale = Math.max(0.65, 1 - Math.min(scrollY, 400) / 600);
+  const heroOpacity = Math.max(0.2, 1 - Math.min(scrollY, 400) / 500);
+
   return (
-    <div className="home-view fade-in" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* ── HERO ── */}
+    <div 
+      className="home-view fade-in custom-scrollbar" 
+      onScroll={handleScroll}
+      style={{ 
+        height: '100%', 
+        display: 'flex', 
+        flexDirection: 'column', 
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        position: 'relative'
+      }}
+    >
+      {/* ── HERO SECTION ── */}
       <section className="home-hero" style={{ 
-        padding: '50px 50px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px', flexShrink: 0 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        gap: '40px',
+        flexShrink: 0,
+        minHeight: 'calc(100vh - 120px)',
+        height: 'calc(100vh - 120px)',
+        transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+        opacity: heroOpacity,
+        transform: `scale(${heroScale})`,
+        transformOrigin: 'center center',
+        position: 'relative',
+        zIndex: 5
       }}>
-        <div className="hero-logo-wrap" style={{ position: 'relative', textAlign: 'center', padding: '20px' }}>
+        <div className="hero-logo-wrap" style={{ 
+          position: 'relative', textAlign: 'center',
+          transition: 'all 0.6s ease'
+        }}>
           <img 
             src="/logo.png" 
             alt="ElderSea Logo" 
             style={{ 
-              width: '450px', 
+              width: '480px',
+              maxWidth: '80vw',
               position: 'relative', 
               zIndex: 2, 
-              filter: 'drop-shadow(0 0 30px rgba(212,175,55,0.3))' 
+              filter: 'drop-shadow(0 0 40px rgba(212,175,55,0.3))',
+              transition: 'all 0.6s ease'
             }} 
           />
         </div>
 
-        <div className="hero-actions" style={{ position: 'relative', zIndex: 5 }}>
-          <button className="play-btn" onClick={handleLaunch} disabled={isLaunching || gameRunning} style={{ padding: '16px 54px', fontSize: '17px' }}>
+        <div className="hero-actions" style={{ 
+          position: 'relative', zIndex: 10,
+          transition: 'all 0.6s ease'
+        }}>
+          <button className="play-btn" onClick={handleLaunch} disabled={isLaunching || gameRunning} style={{ 
+            padding: '18px 64px', 
+            fontSize: '18px',
+            transition: 'all 0.6s ease',
+            boxShadow: '0 0 30px rgba(212,175,55,0.2)'
+          }}>
             {gameRunning ? 'EN JEU' : (isLaunching ? t.launching : t.play)}
           </button>
         </div>
-      </section>
 
-      {/* ── NEWS ── */}
-      <section className="section-header" style={{ display: 'flex', alignItems: 'center', padding: '10px 50px 15px' }}>
-        <div className="section-title cinzel" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--crystal)', letterSpacing: '3px' }}>{t.latest_news}</div>
-        <div className="section-line" style={{ flex: 1, height: '1px', marginLeft: '20px', background: 'linear-gradient(90deg, var(--border-bright), transparent)' }} />
-      </section>
-
-      <div className="news-scroll-area" style={{ flex: 1, overflowY: 'auto', padding: '10px 50px 40px' }}>
-        {newsList.length === 0 ? (
-           <div style={{color:'var(--text-muted)', textAlign:'center', marginTop:'20px'}}>Aucune actualité pour le moment.</div>
-        ) : (
-          <div className="news-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px', alignItems: 'start' }}>
-            {newsList.map((item, i) => (
-              <div 
-                key={i} 
-                className="news-card glass-panel" 
-                style={{ padding: '0', display: 'flex', flexDirection: 'column', height: 'fit-content', cursor: 'pointer', overflow: 'hidden' }}
-                onClick={() => setSelectedNews(item)}
-              >
-                {item.image && (
-                  <div style={{ width: '100%', height: '140px', backgroundImage: `url(${item.image})`, backgroundSize: 'cover', backgroundPosition: 'center', borderBottom: '1px solid var(--glass-border)' }}></div>
-                )}
-                <div style={{ padding: '24px' }}>
-                  <div className="news-tag cinzel" style={{ display: 'inline-block', fontSize: '10px', color: '#111', background: 'var(--purple-light)', padding: '4px 8px', borderRadius: '4px', marginBottom: '12px', fontWeight: 900 }}>{item.tag || 'INFO'}</div>
-                  <div className="news-title cinzel" style={{ fontSize: '16px', fontWeight: 800, color: '#f8fafc', marginBottom: '12px', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{item.title || 'Nouvelle'}</div>
-                  <div className="news-body" style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: (item.content || '').substring(0, 100) + '...' }}></div>
-                  <div className="news-date" style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '20px', fontStyle: 'italic' }}>{item.date ? new Date(item.date).toLocaleDateString('fr-FR') : ''}</div>
-                </div>
-              </div>
-            ))}
+        {/* Scroll Indicator */}
+        {newsList.length > 0 && (
+          <div className="scroll-indicator fade-in" style={{
+            position: 'absolute', bottom: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+            color: 'var(--text-dim)', fontSize: '10px', letterSpacing: '3px', fontWeight: 700, textTransform: 'uppercase',
+            opacity: Math.max(0, 1 - scrollY / 100),
+            transition: 'opacity 0.3s ease'
+          }}>
+            <span>Dernières actualités</span>
+            <div className="bounce" style={{ animation: 'bounce 2s infinite' }}>
+              <ChevronDown size={18} color="var(--purple)" />
+            </div>
           </div>
         )}
+      </section>
+
+      {/* ── NEWS SECTION ── */}
+      <div 
+        className="news-container"
+        style={{ 
+          position: 'relative',
+          zIndex: 10,
+          background: 'linear-gradient(to bottom, transparent, rgba(5,7,10,0.8) 150px, rgba(5,7,10,0.95))',
+          minHeight: newsList.length === 0 ? 'auto' : '100vh',
+          paddingTop: '40px'
+        }}
+      >
+        <section className="section-header" style={{ 
+          display: 'flex', alignItems: 'center', padding: '40px 50px 20px',
+        }}>
+          <div className="section-title cinzel" style={{ fontSize: '12px', fontWeight: 800, color: 'var(--crystal)', letterSpacing: '4px' }}>{t.latest_news}</div>
+          <div className="section-line" style={{ flex: 1, height: '1px', marginLeft: '25px', background: 'linear-gradient(90deg, var(--border-bright), transparent)', opacity: 0.4 }} />
+        </section>
+
+        <div style={{ padding: '20px 50px 100px' }}>
+          {newsList.length === 0 ? (
+             <div style={{color:'var(--text-muted)', textAlign:'center', marginTop:'40px'}}>Aucune actualité pour le moment.</div>
+          ) : (
+            <div className="news-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '30px', alignItems: 'start' }}>
+              {newsList.map((item, i) => (
+                <div 
+                  key={i} 
+                  className="news-card glass-panel" 
+                  style={{ padding: '0', display: 'flex', flexDirection: 'column', height: 'fit-content', cursor: 'pointer', overflow: 'hidden' }}
+                  onClick={() => setSelectedNews(item)}
+                >
+                  {item.image && (
+                    <div style={{ width: '100%', height: '180px', backgroundImage: `url(${item.image})`, backgroundSize: 'cover', backgroundPosition: 'center', borderBottom: '1px solid var(--glass-border)' }}></div>
+                  )}
+                  <div style={{ padding: '30px' }}>
+                    <div className="news-tag cinzel" style={{ display: 'inline-block', fontSize: '9px', color: '#111', background: 'var(--purple-light)', padding: '5px 10px', borderRadius: '4px', marginBottom: '14px', fontWeight: 900 }}>{item.tag || 'INFO'}</div>
+                    <div className="news-title cinzel" style={{ fontSize: '19px', fontWeight: 800, color: '#f8fafc', marginBottom: '14px' }}>{item.title || 'Nouvelle'}</div>
+                    <div className="news-body" style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: (item.content || '').substring(0, 120) + '...' }}></div>
+                    <div className="news-date" style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '25px', fontStyle: 'italic', fontWeight: 600 }}>{item.date ? new Date(item.date).toLocaleDateString('fr-FR') : ''}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ── FULLSCREEN NEWS MODAL ── */}
-      {selectedNews && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(5, 7, 10, 0.9)', backdropFilter: 'blur(10px)',
-          display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px'
-        }}>
-          <div style={{
-            width: '100%', maxWidth: '850px', maxHeight: '90vh', background: 'var(--bg-panel)',
-            borderRadius: '16px', border: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column',
-            overflow: 'hidden', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8)',
-            animation: 'fadeIn 0.3s ease'
-          }}>
-            <button 
-              onClick={() => setSelectedNews(null)}
-              style={{
-                position: 'absolute', top: '20px', right: '20px', zIndex: 10, width: '36px', height: '36px',
-                borderRadius: '50%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)',
-                color: 'white', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer'
-              }}
-            >
-              <X size={20} />
-            </button>
-
-            <div style={{
-              width: '100%', height: '300px', backgroundImage: selectedNews.image ? `url(${selectedNews.image})` : 'none',
-              backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative',
-              display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '40px',
-              borderBottom: '1px solid var(--glass-border)'
-            }}>
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, var(--bg-panel) 0%, transparent 100%)' }}></div>
-              <div style={{ position: 'relative', zIndex: 2 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                  <span style={{ padding: '6px 12px', background: 'rgba(212,175,55,0.15)', border: '1px solid var(--purple)', color: 'var(--purple)', borderRadius: '6px', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>
-                    {selectedNews.tag || 'INFO'}
-                  </span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: 600 }}>{selectedNews.date ? new Date(selectedNews.date).toLocaleDateString('fr-FR') : ''}</span>
-                </div>
-                <h1 className="cinzel" style={{ margin: 0, fontSize: '38px', fontWeight: 900, color: 'white', textShadow: '0 4px 8px rgba(0,0,0,0.8)' }}>
-                  {selectedNews.title || 'Nouvelle'}
-                </h1>
-              </div>
-            </div>
-
-            <div style={{ padding: '40px', overflowY: 'auto', flex: 1 }}>
-              <div style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: 1.8, marginBottom: '40px' }} dangerouslySetInnerHTML={{ __html: selectedNews.content || '' }}></div>
-              
-              {selectedNews.tip && (
-                <div style={{
-                  background: 'rgba(10, 13, 26, 0.8)', border: '1px solid rgba(212,175,55,0.3)', borderRadius: '12px',
-                  padding: '24px', position: 'relative', overflow: 'hidden'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--purple)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                      <Lightbulb size={18} color="#000" />
-                    </div>
-                    <span style={{ color: 'var(--purple)', fontWeight: 800, fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase' }}>Conseil de pro</span>
-                  </div>
-                  <div style={{ color: 'var(--text-main)', fontSize: '14px', fontStyle: 'italic', lineHeight: 1.6 }}>
-                    {selectedNews.tip}
-                  </div>
-                  <Lightbulb size={120} color="var(--purple)" style={{ position: 'absolute', right: '-20px', bottom: '-40px', opacity: 0.05 }} />
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes bounce {
+          0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
+          40% {transform: translateY(-8px);}
+          60% {transform: translateY(-4px);}
+        }
+      `}} />
     </div>
   );
 };
