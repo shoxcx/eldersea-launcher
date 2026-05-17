@@ -41,26 +41,23 @@ const ProfileView = () => {
     try {
       setStatus({ type: '', msg: 'Vérification...' });
       
-      // Récupérer l'utilisateur pour vérifier le mot de passe actuel
-      const res = await fetch(`https://eldersea-53660-default-rtdb.firebaseio.com/users.json`);
-      const allData = await res.json();
-      const userEntry = Object.entries(allData).find(([id, u]) => u.pseudo === user.pseudo);
-      
-      if (!userEntry) throw new Error("Utilisateur introuvable");
-      
-      const [id, dbUser] = userEntry;
-      const hashedCurrent = await hashPassword(currentPassword);
-      
-      if (dbUser.password !== hashedCurrent) {
+      // Essayer de se connecter avec le mot de passe actuel pour le vérifier
+      try {
+        await firebaseService.login(user.pseudo, currentPassword);
+      } catch (loginErr) {
         setStatus({ type: 'error', msg: 'Mot de passe actuel incorrect.' });
         return;
       }
 
-      await firebaseService.updatePassword(user.pseudo, newPassword);
-      setStatus({ type: 'success', msg: 'Mot de passe mis à jour !' });
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
+      const success = await firebaseService.updatePassword(user.pseudo, newPassword);
+      if (success) {
+        setStatus({ type: 'success', msg: 'Mot de passe mis à jour !' });
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        throw new Error("Erreur de mise à jour");
+      }
     } catch (e) {
       setStatus({ type: 'error', msg: 'Erreur lors de la mise à jour.' });
     }

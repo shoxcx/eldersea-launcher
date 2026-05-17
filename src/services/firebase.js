@@ -1,4 +1,4 @@
-const DB_URL = "https://eldersea-53660-default-rtdb.firebaseio.com";
+const API_URL = import.meta.env.VITE_API_URL || 'https://eldersea.tekao.fr/api';
 
 export async function hashPassword(pwd) {
   const msgUint8 = new TextEncoder().encode(pwd);
@@ -10,23 +10,13 @@ export async function hashPassword(pwd) {
 export const firebaseService = {
   // Check if a user exists by pseudo
   async checkUserExists(pseudo) {
+    if (!pseudo) return false;
     try {
-      const response = await fetch(`${DB_URL}/users.json?orderBy="pseudo"&equalTo="${pseudo}"`);
+      const response = await fetch(`${API_URL}/api/auth/check-exists?pseudo=${encodeURIComponent(pseudo)}`);
       const data = await response.json();
-      
-      // If Firebase returns an error (like missing index), we handle it
-      if (data && data.error) {
-        console.warn("Firebase Index Error:", data.error);
-        // Fallback: manually check (less efficient but works without index for small DB)
-        const allRes = await fetch(`${DB_URL}/users.json`);
-        const allData = await allRes.json();
-        if (!allData) return false;
-        return Object.values(allData).some(u => u.pseudo.toLowerCase() === pseudo.toLowerCase());
-      }
-
-      return data && Object.keys(data).length > 0;
+      return data.exists;
     } catch (e) {
-      console.error("Firebase Error:", e);
+      console.error("Auth check failed:", e);
       return false;
     }
   },
@@ -35,46 +25,44 @@ export const firebaseService = {
   async register(userData) {
     try {
       const hashedPwd = await hashPassword(userData.password);
-      const response = await fetch(`${DB_URL}/users.json`, {
+      const response = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...userData,
+          pseudo: userData.pseudo,
+          email: userData.email,
           password: hashedPwd,
-          createdAt: new Date().toLocaleDateString(),
-          isPremium: true
+          twoFaSecret: userData.twoFaSecret || null
         })
       });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Erreur d'inscription.");
+      }
       return await response.json();
     } catch (e) {
-      console.error("Firebase Register Error:", e);
+      console.error("Register error:", e);
       throw e;
     }
   },
 
   // Login user
   async login(pseudo, password) {
+    if (!pseudo || !password) throw new Error("Pseudo et mot de passe requis");
     try {
-      const response = await fetch(`${DB_URL}/users.json`);
-      const allData = await response.json();
-      
-      if (!allData) throw new Error("Utilisateur non trouvé");
-      
-      const userEntry = Object.entries(allData).find(([id, u]) => u.pseudo === pseudo);
-      
-      if (userEntry) {
-        const [id, user] = userEntry;
-        const hashedInput = await hashPassword(password);
-        if (user.password === hashedInput) {
-          return { ...user, id };
-        } else {
-          throw new Error("Mot de passe incorrect");
-        }
-      } else {
-        throw new Error("Utilisateur non trouvé");
+      const hashedPwd = await hashPassword(password);
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pseudo, password: hashedPwd })
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Erreur de connexion.");
       }
+      return await response.json();
     } catch (e) {
-      console.error("Firebase Login Error:", e);
+      console.error("Login error:", e);
       throw e;
     }
   },
@@ -82,25 +70,27 @@ export const firebaseService = {
   // Update password
   async updatePassword(pseudo, newPassword) {
     try {
-      const response = await fetch(`${DB_URL}/users.json`);
-      const allData = await response.json();
-      if (!allData) return false;
+      // 1. Get user to retrieve their ID
+      const userRes = await fetch(`${API_URL}/api/users`);
+      if (!userRes.ok) return false;
+      const allUsers = await userRes.json();
+      const user = allUsers.find(u => u.pseudo.toLowerCase() === pseudo.toLowerCase());
+      if (!user) return false;
 
-      const userEntry = Object.entries(allData).find(([id, u]) => u.pseudo === pseudo);
-      if (userEntry) {
-        const [id] = userEntry;
-        const hashedNew = await hashPassword(newPassword);
-        await fetch(`${DB_URL}/users/${id}.json`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: hashedNew })
-        });
-        return true;
-      }
-      return false;
+      // 2. Hash new password
+      const hashedNew = await hashPassword(newPassword);
+
+      // 3. Patch user
+      const response = await fetch(`${API_URL}/api/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: hashedNew })
+      });
+      return response.ok;
     } catch (e) {
-      console.error("Firebase Update Error:", e);
+      console.error("Password update error:", e);
       throw e;
     }
   }
 };
+
