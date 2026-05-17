@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "pirates",
+  "version": "1.9.3",
+  "name": "Valkyrien Pirates",
+  "description": "{Pirates as they should be.}",
+  "authors": [
+    "Acrogenous"
+  ],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/valkyrien-pirates/",
+    "sources": "https://github.com/JSJBDEV/pirates"
+  },
+  "license": "MIT",
+  "icon": "assets/pirates/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      {
+        "value": "ace.actually.pirates.PiratesFabric"
+      }
+    ]
+  },
+  "mixins": [
+    "pirates-common.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": "\u003e\u003d0.15.6",
+    "minecraft": "~1.20.1",
+    "java": "\u003e\u003d17",
+    "fabric-api": "*",
+    "valkyrienskies": "\u003e\u003d2.1.3-beta.1+a52f38bd68",
+    "vlib": "\u003e\u003d0.0.11"
+  },
+  "suggests": {
+    "another-mod": "*"
+  },
+  "accessWidener": "pirates.accesswidener",
+  "jars": [
+    {
+      "file": "META-INF/jars/architectury-fabric-9.1.12.jar"
+    }
+  ]
+}

@@ -1,0 +1,289 @@
+
+   Id Name                        Company                       
+   -- ----                        -------                       
+ 6968 AdjustService                                             
+21680 AdobeARM                    Adobe Inc.                    
+ 7184 AdobeUpdateService                                        
+ 9208 AggregatorHost                                            
+ 2660 Antigravity                 Google LLC                    
+ 3392 Antigravity                 Google LLC                    
+ 5400 Antigravity                 Google LLC                    
+ 5836 Antigravity                 Google LLC                    
+ 5864 Antigravity                 Google LLC                    
+ 7620 Antigravity                 Google LLC                    
+11904 Antigravity                 Google LLC                    
+12804 Antigravity                 Google LLC                    
+13828 Antigravity                 Google LLC                    
+20328 Antigravity                 Google LLC                    
+21380 Antigravity                 Google LLC                    
+23356 Antigravity                 Google LLC                    
+26432 Antigravity                 Google LLC                    
+26464 Antigravity                 Google LLC                    
+28248 Antigravity                 Google LLC                    
+29272 Antigravity                 Google LLC                    
+29348 Antigravity                 Google LLC                    
+29808 Antigravity                 Google LLC                    
+32136 Antigravity                 Google LLC                    
+32460 Antigravity                 Google LLC                    
+11388 ApplicationFrameHost        Microsoft Corporation         
+ 4232 audiodg                                                   
+13788 AutoHotkey64                AutoHotkey Foundation LLC     
+16896 cam_helper                                                
+18148 cam_helper                                                
+19420 cmd                         Microsoft Corporation         
+ 6680 conhost                     Microsoft Corporation         
+ 6964 conhost                     Microsoft Corporation         
+11352 conhost                     Microsoft Corporation         
+13680 conhost                     Microsoft Corporation         
+17696 conhost                                                   
+18716 conhost                     Microsoft Corporation         
+22176 conhost                     Microsoft Corporation         
+22704 conhost                     Microsoft Corporation         
+23732 conhost                     Microsoft Corporation         
+23944 conhost                     Microsoft Corporation         
+29504 conhost                     Microsoft Corporation         
+30432 conhost                     Microsoft Corporation         
+30472 conhost                     Microsoft Corporation         
+ 1100 csrss                                                     
+ 1220 csrss                                                     
+10448 ctfmon                                                    
+ 4284 dasHost                                                   
+25804 DataExchangeHost            Microsoft Corporation         
+ 1572 Discord                     Discord Inc.                  
+ 1812 Discord                     Discord Inc.                  
+ 4796 Discord                     Discord Inc.                  
+ 5244 Discord                     Discord Inc.                  
+ 7456 Discord                     Discord Inc.                  
+16576 Discord                     Discord Inc.                  
+ 7440 dllhost                     Microsoft Corporation         
+12224 dllhost                                                   
+20444 dllhost                     Microsoft Corporation         
+ 2024 dwm                                                       
+ 7236 EasyTuneEngineService                                     
+ 6784 explorer                    Microsoft Corporation         
+30688 filezilla                   FileZilla Project             
+ 1556 fontdrvhost                                               
+ 1584 fontdrvhost                                               
+ 5228 fzsftp                      FileZilla Project             
+20916 fzsftp                      FileZilla Project             
+ 7200 GameInputRedistService                                    
+ 7664 GameInputRedistService      Windows (R) Win 7 DDK provider
+16008 GameInputSvc                                              
+16040 GameInputSvc                                              
+ 7748 gamingservices                                            
+ 7740 gamingservicesnet                                         
+17376 GCloud                                                    
+ 6776 GigabyteUpdateService                                     
+19064 GraphicsCardEngine                                        
+    0 Idle                                                      
+ 5000 java                        Eclipse Adoptium              
+ 7936 java                        Eclipse Adoptium              
+ 9636 java                        Oracle Corporation            
+ 9656 java                        Eclipse Adoptium              
+15396 java                        Eclipse Adoptium              
+22640 java                        Oracle Corporation            
+22984 java                        Eclipse Adoptium              
+24300 java                        Eclipse Adoptium              
+24684 java                        Eclipse Adoptium              
+25304 java                        Eclipse Adoptium              
+25356 java                        Eclipse Adoptium              
+34184 java                        Eclipse Adoptium              
+35228 java                        Oracle Corporation            
+ 9468 jusched                     Oracle Corporation            
+ 9328 language_server_windows_x64                               
+10644 language_server_windows_x64                               
+30952 language_server_windows_x64                               
+ 9828 LocationNotificationWindows Microsoft Corporation         
+15780 LockApp                     Microsoft Corporation         
+ 1292 LsaIso                                                    
+ 1308 lsass                                                     
+29376 Lunar Client                Moonsworth LLC                
+29416 Lunar Client                Moonsworth LLC                
+29536 Lunar Client                Moonsworth LLC                
+30028 Lunar Client                Moonsworth LLC                
+30584 Lunar Client                Moonsworth LLC                
+31188 Lunar Client                Moonsworth LLC                
+32284 Lunar Client                Moonsworth LLC                
+ 3172 Memory Compression                                        
+ 7252 MpDefenderCoreService                                     
+12972 msdtc                                                     
+ 7268 MsMpEng                                                   
+ 6952 NisSrv                                                    
+12376 node                        Node.js                       
+ 7244 NordUpdateService                                         
+ 5908 nordvpn-service                                           
+ 2408 NVDisplay.Container                                       
+ 3464 NVDisplay.Container                                       
+13460 NZXT CAM                    NZXT, Inc.                    
+18860 NZXT CAM                    NZXT, Inc.                    
+19140 NZXT CAM                    NZXT, Inc.                    
+19180 NZXT CAM                    NZXT, Inc.                    
+19400 NZXT CAM                    NZXT, Inc.                    
+13436 ollama                                                    
+18020 ollama app                                                
+ 2284 opera                       Opera Software                
+ 4056 opera                       Opera Software                
+ 5892 opera                       Opera Software                
+ 6760 opera                       Opera Software                
+ 7584 opera                       Opera Software                
+ 9708 opera                       Opera Software                
+10548 opera                       Opera Software                
+12620 opera                       Opera Software                
+13008 opera                       Opera Software                
+14212 opera                       Opera Software                
+16484 opera                       Opera Software                
+16944 opera                       Opera Software                
+17272 opera                       Opera Software                
+19796 opera                       Opera Software                
+20104 opera                       Opera Software                
+21384 opera                       Opera Software                
+22224 opera                       Opera Software                
+26184 opera                       Opera Software                
+29216 opera                       Opera Software                
+31476 opera                       Opera Software                
+18200 opera_crashreporter         Opera Software                
+13716 powershell                  Microsoft Corporation         
+23220 powershell                  Microsoft Corporation         
+24368 powershell                  Microsoft Corporation         
+26840 powershell                  Microsoft Corporation         
+28712 powershell                  Microsoft Corporation         
+28912 powershell                  Microsoft Corporation         
+31204 powershell                  Microsoft Corporation         
+32432 powershell                  Microsoft Corporation         
+ 2528 putty                       Simon Tatham                  
+27244 putty                       Simon Tatham                  
+  212 Registry                                                  
+ 7260 RtkAudUService64                                          
+11688 RuntimeBroker               Microsoft Corporation         
+12212 RuntimeBroker               Microsoft Corporation         
+12312 RuntimeBroker               Microsoft Corporation         
+16112 RuntimeBroker               Microsoft Corporation         
+20744 RuntimeBroker               Microsoft Corporation         
+23720 RuntimeBroker               Microsoft Corporation         
+29084 SbieCtrl                    Sandboxie-Plus.com            
+ 3640 SbieSvc                                                   
+ 7956 SbieSvc                                                   
+27084 SearchFilterHost                                          
+12280 SearchHost                  Microsoft Corporation         
+13760 SearchIndexer                                             
+26272 SearchProtocolHost                                        
+  172 Secure System                                             
+15576 SecurityHealthService                                     
+17368 SecurityHealthSystray       Microsoft Corporation         
+ 7176 service                                                   
+ 1272 services                                                  
+24728 ShellExperienceHost         Microsoft Corporation         
+ 7280 SignalRgbService                                          
+ 5828 sihost                      Microsoft Corporation         
+  740 smss                                                      
+ 5700 spoolsv                                                   
+11364 StartMenuExperienceHost     Microsoft Corporation         
+  992 svchost                                                   
+ 1356 svchost                                                   
+ 1388 svchost                                                   
+ 1504 svchost                                                   
+ 1664 svchost                                                   
+ 1708 svchost                                                   
+ 1796 svchost                                                   
+ 1820 svchost                                                   
+ 1848 svchost                                                   
+ 1856 svchost                                                   
+ 1920 svchost                                                   
+ 1964 svchost                                                   
+ 2004 svchost                                                   
+ 2172 svchost                                                   
+ 2252 svchost                                                   
+ 2308 svchost                                                   
+ 2328 svchost                                                   
+ 2380 svchost                                                   
+ 2464 svchost                                                   
+ 2640 svchost                                                   
+ 2716 svchost                                                   
+ 2772 svchost                                                   
+ 2804 svchost                                                   
+ 2868 svchost                                                   
+ 2932 svchost                                                   
+ 3064 svchost                                                   
+ 3080 svchost                                                   
+ 3224 svchost                                                   
+ 3264 svchost                                                   
+ 3272 svchost                                                   
+ 3616 svchost                                                   
+ 3788 svchost                                                   
+ 4184 svchost                                                   
+ 4212 svchost                                                   
+ 4248 svchost                                                   
+ 4628 svchost                                                   
+ 4720 svchost                                                   
+ 4844 svchost                                                   
+ 4852 svchost                                                   
+ 4884 svchost                                                   
+ 4892 svchost                                                   
+ 5476 svchost                                                   
+ 5576 svchost                                                   
+ 5600 svchost                                                   
+ 5796 svchost                                                   
+ 5876 svchost                     Microsoft Corporation         
+ 5996 svchost                     Microsoft Corporation         
+ 6016 svchost                                                   
+ 6060 svchost                     Microsoft Corporation         
+ 6180 svchost                                                   
+ 6184 svchost                                                   
+ 6252 svchost                                                   
+ 6348 svchost                                                   
+ 6488 svchost                                                   
+ 6516 svchost                                                   
+ 6792 svchost                                                   
+ 6888 svchost                                                   
+ 6936 svchost                                                   
+ 7148 svchost                                                   
+ 8984 svchost                                                   
+ 9164 svchost                                                   
+ 9316 svchost                                                   
+ 9440 svchost                                                   
+ 9548 svchost                                                   
+ 9616 svchost                     Microsoft Corporation         
+10168 svchost                                                   
+10652 svchost                                                   
+11696 svchost                                                   
+12560 svchost                     Microsoft Corporation         
+12844 svchost                                                   
+13616 svchost                                                   
+13784 svchost                                                   
+14140 svchost                                                   
+14560 svchost                                                   
+15268 svchost                     Microsoft Corporation         
+15532 svchost                     Microsoft Corporation         
+17428 svchost                                                   
+19436 svchost                                                   
+20348 svchost                                                   
+23312 svchost                                                   
+26436 svchost                     Microsoft Corporation         
+    4 System                                                    
+10556 TabTip                                                    
+ 6120 taskhostw                   Microsoft Corporation         
+ 4636 TBPanel                                                   
+15336 TextInputHost               Microsoft Corporation         
+ 6164 UserOOBEBroker              Microsoft Corporation         
+17132 vgtray                      Riot Games, Inc.              
+ 9836 Wacom_Tablet                                              
+ 8168 Wacom_TabletUser            Wacom Co. Ltd.                
+ 9864 Wacom_TouchUser                                           
+ 8692 Wacom_UpdateUtil                                          
+ 8928 WacomHost                                                 
+ 8468 wallpaper64                                               
+ 7216 wallpaperservice32                                        
+ 8064 WidgetBoard                 Microsoft Corporation         
+12876 WidgetService               Microsoft Corporation         
+ 1196 wininit                                                   
+ 1452 winlogon                                                  
+19904 WmiApSrv                                                  
+21016 WmiPrvSE                                                  
+ 7228 WTabletServicePro                                         
+ 2956 WUDFHost                                                  
+ 6532 XboxPcAppFT                 Microsoft Corporation         
+19688 XboxPcTray                  Microsoft Corporation         
+12908 xgamehelper                 Microsoft Corporation         
+
+
+
