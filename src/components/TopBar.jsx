@@ -48,6 +48,13 @@ const TopBar = ({ onOpenAuth, onOpenSettings, setActiveTab, onToggleProfile, isP
       zIndex: 1000
     }}>
       <div style={{ position: 'absolute', inset: 0, WebkitAppRegion: 'drag', zIndex: 0 }} />
+      
+      <div className="topbar-title cinzel" style={{ 
+        position: 'relative', zIndex: 1001, fontSize: '13px', color: 'var(--crystal)', 
+        letterSpacing: '2px', pointerEvents: 'none', opacity: 0.8
+      }}>
+        ELDERSEA <span style={{ color: 'var(--purple)', marginLeft: '8px', fontSize: '10px' }}>V1.0.0</span>
+      </div>
 
       <div className="window-controls-wrapper" style={{ 
         display: 'flex', gap: '25px', alignItems: 'center',

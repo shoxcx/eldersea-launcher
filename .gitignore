@@ -29,3 +29,7 @@ test_syntax.js
 elder-sea-launcher.html
 .gemini
 electron/config.json
+
+# Electron build outputs
+dist_electron/
+release/

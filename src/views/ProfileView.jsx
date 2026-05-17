@@ -121,7 +121,7 @@ const ProfileView = () => {
                 <Key size={16} style={iconInputStyle} />
                 <input 
                   type={showPwd ? "text" : "password"} 
-                  placeholder="Mot de passe actuel" 
+                  placeholder="Code 2FA / mdp actuel (app google auth)" 
                   className="profile-input" 
                   value={currentPassword} 
                   onChange={(e) => setCurrentPassword(e.target.value)} 

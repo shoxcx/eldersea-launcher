@@ -112,7 +112,7 @@ const HomeView = ({ onOpenAuth, setSelectedNews }) => {
           transition: 'all 0.6s ease'
         }}>
           <img 
-            src="/logo.png" 
+            src="logo.png" 
             alt="ElderSea Logo" 
             style={{ 
               width: '480px',

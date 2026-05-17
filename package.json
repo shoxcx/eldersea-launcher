@@ -1,14 +1,38 @@
 {
   "name": "eldersea",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "ElderSea Minecraft Launcher",
+  "author": "ElderSea Team",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env NODE_ENV=development electron .\"",
     "build": "vite build",
+    "dist:electron": "vite build && electron-builder",
     "lint": "eslint .",
     "preview": "vite preview"
+  },
+  "build": {
+    "appId": "com.eldersea.launcher",
+    "productName": "ElderSea",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/logoapp.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "ElderSea"
+    }
   },
   "dependencies": {
     "firebase": "^12.12.1",
@@ -18,7 +42,6 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "ssh2-sftp-client": "^12.1.1",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
@@ -29,6 +52,7 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^41.5.0",
+    "electron-builder": "^26.8.1",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",

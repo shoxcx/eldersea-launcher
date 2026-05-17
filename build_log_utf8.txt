@@ -1,0 +1,128 @@
+﻿
+> eldersea@0.0.0 electron:build
+> npm run build && electron-builder --win
+
+
+> eldersea@0.0.0 build
+> vite build
+
+[36mvite v8.0.10 [32mbuilding client environment for production...[36m[39m
+[2K
+transforming...Ô£ô 1749 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.55 kB Ôöé gzip:  0.33 kB
+dist/assets/index-93aBjnRd.css    5.43 kB Ôöé gzip:  1.88 kB
+dist/assets/index-C0ZN29nb.js   298.10 kB Ôöé gzip: 93.46 kB
+
+[32mÔ£ô built in 828ms[39m
+  ÔÇó electron-builder  version=26.8.1 os=10.0.22631
+  ÔÇó loaded configuration  file=package.json ("build" field)
+  ÔÇó description is missed in the package.json  appPackageFile=C:\Users\User\Desktop\Autres\Oracle\ElderSea\package.json
+  ÔÇó author is missed in the package.json  appPackageFile=C:\Users\User\Desktop\Autres\Oracle\ElderSea\package.json
+  ÔÇó executing @electron/rebuild  electronVersion=41.5.0 arch=x64 buildFromSource=false workspaceRoot=C:\Users\User\Desktop\Autres\Oracle\ElderSea projectDir=./ appDir=./
+  ÔÇó installing native dependencies  arch=x64
+  ÔÇó completed installing native dependencies
+  ÔÇó packaging       platform=win32 arch=x64 electron=41.5.0 appOutDir=dist_electron\win-unpacked
+  ÔÇó searching for node modules  pm=npm searchDir=C:\Users\User\Desktop\Autres\Oracle\ElderSea
+  ÔÇó duplicate dependency references  dependencies=["@firebase/app-types@0.9.4","@firebase/app@0.14.11","@firebase/util@1.15.0","@firebase/util@1.15.0","@firebase/analytics@0.10.21","@firebase/app-compat@0.5.11","@firebase/component@0.7.2","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/installations@0.6.21","@firebase/logger@0.5.0","@firebase/util@1.15.0","@firebase/app-check@0.11.2","@firebase/app-compat@0.5.11","@firebase/component@0.7.2","@firebase/logger@0.5.0","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/logger@0.5.0","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/logger@0.5.0","@firebase/util@1.15.0","@firebase/logger@0.5.0","@firebase/component@0.7.2","@firebase/logger@0.5.0","@firebase/util@1.15.0","@firebase/app-compat@0.5.11","@firebase/app-types@0.9.4","@firebase/util@1.15.0","@firebase/auth@1.13.0","@firebase/component@0.7.2","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/logger@0.5.0","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/logger@0.5.0","@firebase/util@1.15.0","@firebase/component@0.7.2","@firebase/app-types@0.9.4","@firebase/util@1.15.0","@firebase/database@1.1.2","@firebase/logger@0.5.0","@firebase/util@1.15.0","@firebase/component@0.7.2","@firebase/logger@0.5.0","@firebase/util@1.15.0","@firebase/app-compat@0.5.11","@firebase/component@0.7.2","@firebase/app-types@0.9.4","@firebase/util@1.15.0","@firebase/firestore@4.14.0","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/logger@0.5.0","@firebase/util@1.15.0","@grpc/proto-loader@0.7.15","@types/node@24.12.2","string-width@4.2.3","string-width@4.2.3","strip-ansi@6.0.1","strip-ansi@6.0.1","@firebase/app-compat@0.5.11","@firebase/component@0.7.2","@firebase/functions@0.13.3","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/util@1.15.0","@firebase/app-compat@0.5.11","@firebase/component@0.7.2","@firebase/app-types@0.9.4","@firebase/installations@0.6.21","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/util@1.15.0","@firebase/app-compat@0.5.11","@firebase/component@0.7.2","@firebase/messaging@0.12.25","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/installations@0.6.21","@firebase/util@1.15.0","@firebase/app-compat@0.5.11","@firebase/component@0.7.2","@firebase/logger@0.5.0","@firebase/performance@0.7.11","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/installations@0.6.21","@firebase/logger@0.5.0","@firebase/util@1.15.0","@firebase/app-compat@0.5.11","@firebase/component@0.7.2","@firebase/logger@0.5.0","@firebase/remote-config@0.8.2","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/installations@0.6.21","@firebase/logger@0.5.0","@firebase/util@1.15.0","@firebase/app-compat@0.5.11","@firebase/component@0.7.2","@firebase/app-types@0.9.4","@firebase/util@1.15.0","@firebase/storage@0.14.2","@firebase/util@1.15.0","@firebase/app@0.14.11","@firebase/component@0.7.2","@firebase/util@1.15.0","combined-stream@1.0.8","mime-types@2.1.35","asn1@0.2.6","bcrypt-pbkdf@1.0.2"]
+  ÔÇó updating asar integrity executable resource  executablePath=dist_electron\win-unpacked\ElderSea.exe
+  ÔÇó signing with signtool.exe  path=dist_electron\win-unpacked\ElderSea.exe
+  ÔÇó signing with signtool.exe  path=dist_electron\win-unpacked\resources\app.asar.unpacked\node_modules\ssh2\util\pagent.exe
+  ÔÇó building        target=nsis file=dist_electron\ElderSea Setup 0.0.0.exe archs=x64 oneClick=false perMachine=false
+  ÔÇó signing with signtool.exe  path=dist_electron\win-unpacked\resources\elevate.exe
+  Ô¿» C:\Users\User\AppData\Local\electron-builder\Cache\nsis\nsis-3.0.4.1-nsis-3.0.4.1\Bin\makensis.exe process failed ERR_ELECTRON_BUILDER_CANNOT_EXECUTE
+Exit code:
+1
+Output:
+Command line defined: "APP_ID=com.eldersea.launcher"
+Command line defined: "APP_GUID=c4e40a1c-03a5-5406-8208-846ed34d52fb"
+Command line defined: "UNINSTALL_APP_KEY=c4e40a1c-03a5-5406-8208-846ed34d52fb"
+Command line defined: "PRODUCT_NAME=ElderSea"
+Command line defined: "PRODUCT_FILENAME=ElderSea"
+Command line defined: "APP_FILENAME=ElderSea"
+Command line defined: "APP_DESCRIPTION="
+Command line defined: "VERSION=0.0.0"
+Command line defined: "PROJECT_DIR=C:\Users\User\Desktop\Autres\Oracle\ElderSea"
+Command line defined: "BUILD_RESOURCES_DIR=C:\Users\User\Desktop\Autres\Oracle\ElderSea\public"
+Command line defined: "APP_PACKAGE_NAME=eldersea"
+Command line defined: "MUI_ICON=C:\Users\User\Desktop\Autres\Oracle\ElderSea\public\logo.png"
+Command line defined: "MUI_UNICON=C:\Users\User\Desktop\Autres\Oracle\ElderSea\public\logo.png"
+Command line defined: "APP_64=C:\Users\User\Desktop\Autres\Oracle\ElderSea\dist_electron\eldersea-0.0.0-x64.nsis.7z"
+Command line defined: "APP_64_NAME=eldersea-0.0.0-x64.nsis.7z"
+Command line defined: "APP_64_HASH=C501397C518F25B5ABD3936FDE3A674399736E34A7910CF04C81A736C20B3981F6D0B554BA673FE3D61220E138D3B70D1D9D53537C29DA350E738F7D5EF745A5"
+Command line defined: "APP_64_UNPACKED_SIZE=500966"
+Command line defined: "APP_INSTALLER_STORE_FILE=eldersea-updater\installer.exe"
+Command line defined: "COMPRESSION_METHOD=7z"
+Command line defined: "MULTIUSER_INSTALLMODE_ALLOW_ELEVATION"
+Command line defined: "INSTALL_MODE_PER_ALL_USERS_REQUIRED"
+Command line defined: "allowToChangeInstallationDirectory"
+Command line defined: "SHORTCUT_NAME=ElderSea"
+Command line defined: "UNINSTALL_DISPLAY_NAME=ElderSea 0.0.0"
+Command line defined: "MUI_WELCOMEFINISHPAGE_BITMAP=${NSISDIR}\Contrib\Graphics\Wizard\nsis3-metro.bmp"
+Command line defined: "MUI_UNWELCOMEFINISHPAGE_BITMAP=${NSISDIR}\Contrib\Graphics\Wizard\nsis3-metro.bmp"
+Command line defined: "UNINSTALLER_ICON=C:\Users\User\Desktop\Autres\Oracle\ElderSea\public\logo.png"
+Command line defined: "ESTIMATED_SIZE=500965"
+Command line defined: "COMPRESS=auto"
+Command line defined: "BUILD_UNINSTALLER"
+Command line defined: "UNINSTALLER_OUT_FILE=C:\Users\User\Desktop\Autres\Oracle\ElderSea\dist_electron\ElderSea Setup 0.0.0.__uninstaller.exe"
+Processing config: C:\Users\User\AppData\Local\electron-builder\Cache\nsis\nsis-3.0.4.1-nsis-3.0.4.1\nsisconf.nsh
+Processing script file: "<stdin>" (UTF8)
+
+Error output:
+Error while loading icon from "C:\Users\User\Desktop\Autres\Oracle\ElderSea\public\logo.png": invalid icon file
+Error in macro MUI_INTERFACE on macroline 87
+Error in macro MUI_UNPAGE_INIT on macroline 7
+Error in macro MUI_UNPAGE_WELCOME on macroline 5
+!include: error in script: "assistedInstaller.nsh" on line 70
+Error in script "<stdin>" on line 117 -- aborting creation process
+  failedTask=build stackTrace=Error: C:\Users\User\AppData\Local\electron-builder\Cache\nsis\nsis-3.0.4.1-nsis-3.0.4.1\Bin\makensis.exe process failed ERR_ELECTRON_BUILDER_CANNOT_EXECUTE
+Exit code:
+1
+Output:
+Command line defined: "APP_ID=com.eldersea.launcher"
+Command line defined: "APP_GUID=c4e40a1c-03a5-5406-8208-846ed34d52fb"
+Command line defined: "UNINSTALL_APP_KEY=c4e40a1c-03a5-5406-8208-846ed34d52fb"
+Command line defined: "PRODUCT_NAME=ElderSea"
+Command line defined: "PRODUCT_FILENAME=ElderSea"
+Command line defined: "APP_FILENAME=ElderSea"
+Command line defined: "APP_DESCRIPTION="
+Command line defined: "VERSION=0.0.0"
+Command line defined: "PROJECT_DIR=C:\Users\User\Desktop\Autres\Oracle\ElderSea"
+Command line defined: "BUILD_RESOURCES_DIR=C:\Users\User\Desktop\Autres\Oracle\ElderSea\public"
+Command line defined: "APP_PACKAGE_NAME=eldersea"
+Command line defined: "MUI_ICON=C:\Users\User\Desktop\Autres\Oracle\ElderSea\public\logo.png"
+Command line defined: "MUI_UNICON=C:\Users\User\Desktop\Autres\Oracle\ElderSea\public\logo.png"
+Command line defined: "APP_64=C:\Users\User\Desktop\Autres\Oracle\ElderSea\dist_electron\eldersea-0.0.0-x64.nsis.7z"
+Command line defined: "APP_64_NAME=eldersea-0.0.0-x64.nsis.7z"
+Command line defined: "APP_64_HASH=C501397C518F25B5ABD3936FDE3A674399736E34A7910CF04C81A736C20B3981F6D0B554BA673FE3D61220E138D3B70D1D9D53537C29DA350E738F7D5EF745A5"
+Command line defined: "APP_64_UNPACKED_SIZE=500966"
+Command line defined: "APP_INSTALLER_STORE_FILE=eldersea-updater\installer.exe"
+Command line defined: "COMPRESSION_METHOD=7z"
+Command line defined: "MULTIUSER_INSTALLMODE_ALLOW_ELEVATION"
+Command line defined: "INSTALL_MODE_PER_ALL_USERS_REQUIRED"
+Command line defined: "allowToChangeInstallationDirectory"
+Command line defined: "SHORTCUT_NAME=ElderSea"
+Command line defined: "UNINSTALL_DISPLAY_NAME=ElderSea 0.0.0"
+Command line defined: "MUI_WELCOMEFINISHPAGE_BITMAP=${NSISDIR}\Contrib\Graphics\Wizard\nsis3-metro.bmp"
+Command line defined: "MUI_UNWELCOMEFINISHPAGE_BITMAP=${NSISDIR}\Contrib\Graphics\Wizard\nsis3-metro.bmp"
+Command line defined: "UNINSTALLER_ICON=C:\Users\User\Desktop\Autres\Oracle\ElderSea\public\logo.png"
+Command line defined: "ESTIMATED_SIZE=500965"
+Command line defined: "COMPRESS=auto"
+Command line defined: "BUILD_UNINSTALLER"
+Command line defined: "UNINSTALLER_OUT_FILE=C:\Users\User\Desktop\Autres\Oracle\ElderSea\dist_electron\ElderSea Setup 0.0.0.__uninstaller.exe"
+Processing config: C:\Users\User\AppData\Local\electron-builder\Cache\nsis\nsis-3.0.4.1-nsis-3.0.4.1\nsisconf.nsh
+Processing script file: "<stdin>" (UTF8)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           Error output:
+Error while loading icon from "C:\Users\User\Desktop\Autres\Oracle\ElderSea\public\logo.png": invalid icon file
+Error in macro MUI_INTERFACE on macroline 87
+Error in macro MUI_UNPAGE_INIT on macroline 7
+Error in macro MUI_UNPAGE_WELCOME on macroline 5
+!include: error in script: "assistedInstaller.nsh" on line 70
+Error in script "<stdin>" on line 117 -- aborting creation process
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               at ChildProcess.<anonymous> (C:\Users\User\Desktop\Autres\Oracle\ElderSea\node_modules\builder-util\src\util.ts:272:14)
+    at Object.onceWrapper (node:events:639:26)
+    at ChildProcess.emit (node:events:524:28)
+    at ChildProcess.cp.emit (C:\Users\User\Desktop\Autres\Oracle\ElderSea\node_modules\cross-spawn\lib\enoent.js:34:29)
+    at maybeClose (node:internal/child_process:1101:16)
+    at Process.ChildProcess._handle.onexit (node:internal/child_process:304:5)

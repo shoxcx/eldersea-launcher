@@ -4,7 +4,7 @@ import fs from 'fs';
 import https from 'https';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import SftpClient from 'ssh2-sftp-client';
+
 import pkg from 'minecraft-launcher-core';
 import { exec } from 'child_process';
 const { Client, Authenticator } = pkg;
@@ -15,14 +15,22 @@ const __dirname = path.dirname(__filename);
 let mainWindow;
 let isGameRunning = false;
 const launcher = new Client();
+const GAME_ROOT = path.join(process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME), '.eldersea');
+
 
 function checkIfGameIsRunning() {
   return new Promise((resolve) => {
-    // Sur Windows, on cherche si un processus javaw.exe est actif
-    // On pourrait affiner en cherchant "minecraft" ou "ElderSea" dans la ligne de commande
-    exec('tasklist /FI "IMAGENAME eq javaw.exe" /NH', (err, stdout) => {
-      if (err) return resolve(false);
-      resolve(stdout.toLowerCase().includes('javaw.exe'));
+    exec('powershell "Get-CimInstance Win32_Process -Filter \\"Name = \'javaw.exe\'\\" | Select-Object -ExpandProperty CommandLine"', (err, stdout) => {
+      if (err) {
+        exec('tasklist /FI "IMAGENAME eq javaw.exe" /NH', (err2, stdout2) => {
+            if (err2) return resolve(false);
+            return resolve(stdout2.toLowerCase().includes('javaw.exe'));
+        });
+        return;
+      }
+      // On cherche strictement le dossier .eldersea pour éviter de détecter d'autres instances Minecraft
+      const isRunning = stdout.toLowerCase().includes('.eldersea');
+      resolve(isRunning);
     });
   });
 }
@@ -43,14 +51,14 @@ if (!gotTheLock) {
   function createWindow() {
     mainWindow = new BrowserWindow({
       width: 1200, height: 800, frame: false, resizable: false, maximizable: false,
-      title: "ElderSea Launcher",
+      title: "ElderSea v1.0.0",
       webPreferences: { 
         nodeIntegration: true, 
         contextIsolation: false,
         webSecurity: false 
       },
       backgroundColor: '#0a0a0a', show: false,
-      icon: path.join(__dirname, '../public/logoapp.png')
+      icon: path.join(__dirname, '../dist/logoapp.png')
     });
 
     if (process.env.NODE_ENV === 'development') {
@@ -71,11 +79,13 @@ if (!gotTheLock) {
 
   // Vérification périodique (toutes les 10 secondes) au cas où le jeu est fermé manuellement
   setInterval(async () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       const running = await checkIfGameIsRunning();
       if (running !== isGameRunning) {
         isGameRunning = running;
-        mainWindow.webContents.send('game-status', isGameRunning);
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('game-status', isGameRunning);
+        }
       }
     }
   }, 10000);
@@ -94,9 +104,12 @@ ipcMain.on('window-control', (event, action) => {
 });
 
 ipcMain.on('open-folder', (event, folderName) => {
-  const root = "C:\\ElderSea";
-  if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
-  shell.openPath(root);
+  if (!fs.existsSync(GAME_ROOT)) fs.mkdirSync(GAME_ROOT, { recursive: true });
+  shell.openPath(GAME_ROOT);
+});
+
+ipcMain.on('open-external-url', (event, url) => {
+  shell.openExternal(url);
 });
 
 ipcMain.handle('check-mojang', async (event, pseudo) => {
@@ -109,7 +122,7 @@ ipcMain.handle('check-mojang', async (event, pseudo) => {
 
 ipcMain.handle('get-mods', async () => {
   try {
-    const modsDir = "C:\\ElderSea\\mods";
+    const modsDir = path.join(GAME_ROOT, 'mods');
     if (!fs.existsSync(modsDir)) return [];
     return fs.readdirSync(modsDir).filter(f => f.endsWith('.jar')).map(f => ({ name: f }));
   } catch (e) { return []; }
@@ -117,7 +130,7 @@ ipcMain.handle('get-mods', async () => {
 
 ipcMain.handle('get-screenshots', async () => {
   try {
-    const screenshotDir = "C:\\ElderSea\\screenshots";
+    const screenshotDir = path.join(GAME_ROOT, 'screenshots');
     if (!fs.existsSync(screenshotDir)) return [];
     return fs.readdirSync(screenshotDir).filter(f => /\.(png|jpg|jpeg)$/i.test(f)).map(f => {
       const fullPath = path.join(screenshotDir, f);
@@ -188,127 +201,106 @@ async function setupFabric(gameRoot, mcVersion, loaderVersion) {
   return versionId;
 }
 
-async function syncSFTP(gameRoot) {
-  const sftp = new SftpClient();
-  const remoteRoot = '/home/pierre/ElderSea/launcher';
+async function syncHTTP(gameRoot) {
+  const baseUrl = "http://eldersea.tekao.fr/launcher/";
   
-  // Chargement sécurisé de la config
-  let config = { sftp: {} };
-  try {
-    const configPath = path.join(__dirname, 'config.json');
-    if (fs.existsSync(configPath)) {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    }
-  } catch (e) { console.error("Erreur chargement config.json"); }
-
-  try {
-    await sftp.connect({ 
-      host: config.sftp.host, 
-      port: config.sftp.port, 
-      username: config.sftp.username, 
-      password: config.sftp.password, 
-      readyTimeout: 15000 
-    });
-    
-    async function syncDir(remoteDir, localDir) {
-        if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
-        
-        const fileList = await sftp.list(remoteDir);
-        const remoteFileNames = fileList.filter(f => f.type === '-').map(f => f.name);
-        
-        const isModsDir = localDir.endsWith('mods') || localDir.endsWith('mods\\') || localDir.endsWith('mods/');
-        
-        if (isModsDir) {
-            const localFiles = fs.readdirSync(localDir);
-            for (const localFile of localFiles) {
-                if (localFile.endsWith('.jar')) {
-                    const nameL = localFile.toLowerCase();
-                    const whitelist = ['0_create', '1_fabric-api', '2_modmenu', '3_sodium', '3_indium', '4_trinkets', '6_valkyrienskies', '7_createbigcannons', '8_vlib', '9_eureka', '10_effective'];
-                    const isOutdatedBridgedMod = (nameL.includes('create') && !nameL.includes('createbigcannons') && !nameL.includes('0_create')) ||
-                                                (nameL.includes('sodium') && !nameL.includes('3_sodium')) ||
-                                                (nameL.includes('indium') && !nameL.includes('3_indium')) ||
-                                                (nameL.includes('valkyrienskies') && !nameL.includes('6_valkyrienskies')) ||
-                                                (nameL.includes('createbigcannons') && !nameL.includes('7_createbigcannons')) ||
-                                                (nameL.includes('vlib') && !nameL.includes('8_vlib')) ||
-                                                (nameL.includes('eureka') && !nameL.includes('9_eureka')) ||
-                                                (nameL.includes('effective') && !nameL.includes('10_effective'));
-                                                
-                    if (isOutdatedBridgedMod || !remoteFileNames.includes(localFile)) {
-                        if (!whitelist.some(w => nameL.includes(w))) {
-                            try { fs.unlinkSync(path.join(localDir, localFile)); console.log(`[SYNC] Fichier supprimé : ${localFile}`); } catch (e) {}
-                        }
-                    }
-                }
-            }
-        }
-
-        for (const file of fileList) {
-            const remoteFile = `${remoteDir}/${file.name}`;
-            const localFile = path.join(localDir, file.name);
-
-            if (file.type === 'd') {
-                await syncDir(remoteFile, localFile);
-            } else if (file.type === '-') {
-                if (isModsDir) {
-                    const nameL = file.name.toLowerCase();
-                    if (nameL.includes('sodium') || nameL.includes('indium') || nameL.includes('valkyrienskies') ||
-                        (nameL.includes('create') && !nameL.includes('createbigcannons')) || nameL.includes('createbigcannons') ||
-                        nameL.includes('vlib') || nameL.includes('fabric-api') || nameL.includes('modmenu') || nameL.includes('trinkets')) {
-                        continue;
-                    }
-                    if (nameL.includes('embeddium') || nameL.includes('flywheel')) {
-                        try { fs.unlinkSync(localFile); } catch (e) {}
-                        continue;
-                    }
-                }
-                
-                if (!fs.existsSync(localFile) || fs.statSync(localFile).size !== file.size) {
-                    console.log(`[SYNC] DL: ${remoteFile}`);
-                    await sftp.fastGet(remoteFile, localFile);
-                }
-            }
-        }
-    }
-
-    await syncDir(remoteRoot, gameRoot);
-  } catch (err) { 
-    console.error("[SFTP ERROR]", err.message); 
-  } finally { 
-    try { await sftp.end(); } catch(e) {} 
+  async function fetchList(dirUrl) {
+      return new Promise((resolve, reject) => {
+          const req = net.request({ url: dirUrl, redirect: 'follow' });
+          req.on('response', (res) => {
+              if (res.statusCode !== 200) {
+                  return resolve(""); 
+              }
+              let data = '';
+              res.on('data', chunk => data += chunk.toString());
+              res.on('end', () => resolve(data));
+          });
+          req.on('error', reject);
+          req.end();
+      });
   }
-    
-  // TÉLÉCHARGEMENT DES PONTS (Moteur Fabric Pur)
-  const localPath = path.join(gameRoot, 'mods');
-  if (!fs.existsSync(localPath)) fs.mkdirSync(localPath, { recursive: true });
 
-  const bridgeMods = [
-      { name: '0_Create.jar', url: 'https://cdn.modrinth.com/data/Xbc0uyRg/versions/XwEwQH3o/create-fabric-6.0.8.0%2Bbuild.1734-mc1.20.1.jar' },
-      { name: '1_Fabric-API.jar', url: 'https://github.com/FabricMC/fabric/releases/download/0.92.6%2B1.20.1/fabric-api-0.92.6+1.20.1.jar' },
-      { name: '2_ModMenu.jar', url: 'https://github.com/TerraformersMC/ModMenu/releases/download/v7.2.2/modmenu-7.2.2.jar' },
-      { name: '3_Sodium.jar', url: 'https://cdn.modrinth.com/data/AANobbMI/versions/OihdIimA/sodium-fabric-0.5.13%2Bmc1.20.1.jar' },
-      { name: '3_Indium.jar', url: 'https://cdn.modrinth.com/data/Orvt0mRa/versions/nQHYSjxO/indium-1.0.36%2Bmc1.20.1.jar' },
-      { name: '4_Trinkets.jar', url: 'https://cdn.modrinth.com/data/5aaWiji9/versions/n787vT8n/trinkets-3.7.2.jar' },
-      { name: '6_ValkyrienSkies.jar', url: 'https://cdn.modrinth.com/data/V5ujR2yw/versions/qJr3y5vI/valkyrienskies-120-2.4.11.jar' },
-      { name: '7_CreateBigCannons.jar', url: 'https://cdn.modrinth.com/data/GWp4jCJj/versions/RCcu2wC2/createbigcannons-5.11.3%2Bmc.1.20.1-fabric.jar' },
-      { name: '8_VLib.jar', url: 'https://cdn.modrinth.com/data/V1UmcEMX/versions/HOxwImyh/vlib-1.20.1-0.1.0%2Bfabric.jar' },
-      { name: '9_Eureka.jar', url: 'https://cdn.modrinth.com/data/EO8aSHxh/versions/aJWa3eWO/eureka-1201-1.6.3.jar' },
-      { name: '10_Effective.jar', url: 'https://cdn.modrinth.com/data/pcPXJeZi/versions/vwgKoecR/effective-2.3.2-1.20.1.jar' }
-  ];
+  async function checkNeedsDownload(url, dest) {
+      if (!fs.existsSync(dest)) return true;
+      return new Promise((resolve) => {
+          const req = net.request({ method: 'HEAD', url: url, redirect: 'follow' });
+          req.on('response', (res) => {
+              if (res.statusCode === 200) {
+                  const remoteSize = parseInt(res.headers['content-length'] || '0', 10);
+                  const localSize = fs.statSync(dest).size;
+                  resolve(remoteSize > 0 && remoteSize !== localSize);
+              } else {
+                  resolve(true);
+              }
+          });
+          req.on('error', () => resolve(true));
+          req.end();
+      });
+  }
 
-  for (const mod of bridgeMods) {
-      const modPath = path.join(localPath, mod.name);
-      if (!fs.existsSync(modPath) || fs.statSync(modPath).size < 1000) {
-          console.log(`[BRIDGE] Downloading ${mod.name}...`);
-          try {
-              await downloadFile(mod.url, modPath);
-          } catch (dlError) {
-              console.error(`[BRIDGE ERROR] Failed to download ${mod.name}:`, dlError.message);
-              // On n'annule pas le lancement pour autant, le fichier existe peut-être déjà
+  async function syncDir(remoteDir, localDir) {
+      if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
+      
+      const html = await fetchList(remoteDir);
+      if (!html) return;
+      
+      const linkRegex = /<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1/ig;
+      let match;
+      const items = [];
+      while ((match = linkRegex.exec(html)) !== null) {
+          let name = match[2];
+          if (name.startsWith('?') || name.startsWith('/') || name === '../' || name.includes('..') || name.startsWith('http')) continue;
+          items.push(name);
+      }
+
+      const isModsDir = localDir.endsWith('mods') || localDir.endsWith('mods\\') || localDir.endsWith('mods/');
+      
+      if (isModsDir) {
+          const localFiles = fs.readdirSync(localDir);
+          for (const localFile of localFiles) {
+              if (localFile.endsWith('.jar')) {
+                  if (!items.some(i => decodeURIComponent(i.endsWith('/') ? i.slice(0, -1) : i) === localFile)) {
+                      try {
+                          fs.unlinkSync(path.join(localDir, localFile)); 
+                          console.log(`[SYNC] Deleting local mod (not on server): ${localFile}`); 
+                      } catch (e) {}
+                  }
+              }
+          }
+      }
+
+      for (const item of items) {
+          const itemUrl = remoteDir + item;
+          const decodedName = decodeURIComponent(item.endsWith('/') ? item.slice(0, -1) : item);
+          const localFile = path.join(localDir, decodedName);
+
+          if (decodedName.toLowerCase() === '.htaccess') continue;
+
+          if (item.endsWith('/')) {
+              await syncDir(itemUrl, localFile);
+          } else {
+              const shouldDownload = await checkNeedsDownload(itemUrl, localFile);
+              if (shouldDownload) {
+                  console.log(`[SYNC] DL: ${itemUrl}`);
+                  await downloadFile(itemUrl, localFile);
+              }
           }
       }
   }
 
-  mainWindow.webContents.send('mods-updated');
+  try {
+      await syncDir(baseUrl, gameRoot);
+  } catch (err) {
+      console.error("[HTTP SYNC ERROR]", err.message);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('launch-error', "Erreur de connexion au serveur de fichiers (HTTP) : " + err.message);
+      }
+      throw err;
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('mods-updated');
+  }
 }
 
 ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
@@ -317,27 +309,72 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
   mainWindow.webContents.send('game-status', true);
 
   try {
-    const gameRoot = "C:\\ElderSea";
-    if (!fs.existsSync(gameRoot)) fs.mkdirSync(gameRoot, { recursive: true });
+    if (!fs.existsSync(GAME_ROOT)) fs.mkdirSync(GAME_ROOT, { recursive: true });
 
-    mainWindow.webContents.send('launch-progress', { type: 'Chargement hybride...', task: 20, total: 100 });
-    await syncSFTP(gameRoot);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('launch-progress', { type: 'Chargement Forge...', task: 20, total: 100 });
+    }
+    await syncHTTP(GAME_ROOT);
     
-    mainWindow.webContents.send('launch-progress', { type: 'Décollage...', task: 80, total: 100 });
-    const fabricVersion = await setupFabric(gameRoot, "1.20.1", "0.18.3");
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('launch-progress', { type: 'Décollage...', task: 80, total: 100 });
+    }
+    // Pour Forge 1.20.1, on utilise l'ID de version forge correspondant
+    const forgeVersion = "1.20.1-forge-47.4.20"; 
+    const criticalFiles = [
+      path.join(GAME_ROOT, "libraries/net/minecraft/client/1.20.1-20230612.114412/client-1.20.1-20230612.114412-srg.jar"),
+      path.join(GAME_ROOT, "libraries/net/minecraft/client/1.20.1-20230612.114412/client-1.20.1-20230612.114412-extra.jar"),
+      path.join(GAME_ROOT, "libraries/net/minecraftforge/forge/1.20.1-47.4.20/forge-1.20.1-47.4.20-client.jar")
+    ];
+    criticalFiles.forEach(f => {
+      console.log(`[DEBUG] Checking ${f}: ${fs.existsSync(f) ? 'EXISTS' : 'MISSING'}`);
+      if (fs.existsSync(f)) {
+        console.log(`[DEBUG] Size: ${fs.statSync(f).size} bytes`);
+      }
+    });
 
     const authMethod = {
       access_token: "0", client_token: "0", uuid: "00000000-0000-0000-0000-000000000000",
       name: pseudo || "Joueur", user_properties: "{}"
     };
     
+    const libsDir = path.join(GAME_ROOT, 'libraries');
+    const cpSep = process.platform === 'win32' ? ';' : ':';
+    
+    // Forge 1.20.1 module path construction
+    const modulePath = [
+      path.join(libsDir, 'cpw/mods/bootstraplauncher/1.1.2/bootstraplauncher-1.1.2.jar'),
+      path.join(libsDir, 'cpw/mods/securejarhandler/2.1.10/securejarhandler-2.1.10.jar'),
+      path.join(libsDir, 'org/ow2/asm/asm-commons/9.7/asm-commons-9.7.jar'),
+      path.join(libsDir, 'org/ow2/asm/asm-util/9.7/asm-util-9.7.jar'),
+      path.join(libsDir, 'org/ow2/asm/asm-analysis/9.7/asm-analysis-9.7.jar'),
+      path.join(libsDir, 'org/ow2/asm/asm-tree/9.7/asm-tree-9.7.jar'),
+      path.join(libsDir, 'org/ow2/asm/asm/9.7/asm-9.7.jar'),
+      path.join(libsDir, 'net/minecraftforge/JarJarFileSystems/0.3.19/JarJarFileSystems-0.3.19.jar')
+    ].join(cpSep);
+
     let opts = {
       authorization: authMethod,
-      root: gameRoot,
-      version: { number: "1.20.1", type: "release", custom: fabricVersion },
+      root: GAME_ROOT,
+      version: { number: "1.20.1", type: "release", custom: "1.20.1-forge-47.4.20" },
       memory: { max: `${ram}G`, min: "2G" },
-      window: { title: "ElderSea Launcher", width: 1280, height: 720 },
-      javaPath: "javaw"
+      window: { title: "ElderSea RPG 1.20.1", width: 1280, height: 720 },
+      javaPath: "C:\\Program Files\\Java\\jdk-17\\bin\\javaw.exe",
+      customArgs: [
+        "-DlibraryDirectory=" + libsDir,
+        "-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,forge-,1.20.1-forge-47.4.20.jar",
+        "-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar",
+        "-p", modulePath,
+        "--add-modules", "ALL-MODULE-PATH",
+        "--add-opens", "java.base/java.util.jar=cpw.mods.securejarhandler",
+        "--add-opens", "java.base/java.lang.invoke=cpw.mods.securejarhandler",
+        "--add-opens", "java.base/java.lang=ALL-UNNAMED",
+        "--add-opens", "java.base/java.util=ALL-UNNAMED",
+        "--add-opens", "java.base/java.net=ALL-UNNAMED",
+        "--add-opens", "java.base/java.nio.file=ALL-UNNAMED",
+        "--add-exports", "java.base/sun.security.util=cpw.mods.securejarhandler",
+        "--add-exports", "jdk.naming.dns/com.sun.jndi.dns=java.naming"
+      ]
     };
     
     let gameStarted = false;
@@ -345,25 +382,37 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         console.log("[JVM]", e);
         if (!gameStarted) {
             gameStarted = true;
-            mainWindow.webContents.send('hide-progress');
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('hide-progress');
+            }
         }
     });
 
     launcher.on('debug', (e) => console.log("[DEBUG]", e));
+    launcher.on('error', (e) => {
+        console.error("[MCLC ERROR]", e);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('launch-error', e.toString());
+        }
+    });
     launcher.on('progress', (e) => mainWindow.webContents.send('launch-progress', e));
     launcher.on('close', () => {
         isGameRunning = false;
-        mainWindow.webContents.send('game-status', false);
-        mainWindow.webContents.send('launch-finished');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('game-status', false);
+            mainWindow.webContents.send('launch-finished');
+        }
     });
 
-    console.log("[FABRIC] Lancement du moteur...");
+    console.log("[FORGE] Lancement du moteur...");
     launcher.launch(opts);
     
   } catch (error) {
     isGameRunning = false;
-    mainWindow.webContents.send('game-status', false);
-    console.error("[FATAL ERROR]", error);
-    mainWindow.webContents.send('launch-error', error.message);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('game-status', false);
+        console.error("[FATAL ERROR]", error);
+        mainWindow.webContents.send('launch-error', error.message);
+    }
   }
 });

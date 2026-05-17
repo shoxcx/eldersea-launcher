@@ -44,7 +44,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
       <div className="sidebar-logo" style={{ padding: '30px 5px', textAlign: 'center' }}>
         <img
           className="logo-gem"
-          src="/logo.png?v=1"
+          src="logo.png"
           alt="ElderSea"
           style={{
             width: '230px',
@@ -68,7 +68,13 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
           <div
             key={item.id}
             className={`nav-item ${activeTab === item.id ? 'active' : ''} ${item.special || ''}`}
-            onClick={() => setActiveTab(item.id)}
+            onClick={() => {
+              if (item.id === 'shop') {
+                window.ipcRenderer.send('open-external-url', 'https://eldersea.tekao.fr');
+              } else {
+                setActiveTab(item.id);
+              }
+            }}
           >
             <span className="nav-icon">{item.icon}</span>
             <span style={{ fontWeight: 600 }}>{item.label}</span>
