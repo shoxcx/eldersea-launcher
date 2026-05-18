@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, protocol, net, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
@@ -370,6 +370,68 @@ function getJavaPath() {
   return "javaw";
 }
 
+async function setupPortableJava(gameRoot) {
+  const javaFolder = path.join(gameRoot, 'runtime', 'java-17');
+  
+  // Fonction récursive pour chercher javaw.exe
+  const findJavaw = (dir) => {
+    if (!fs.existsSync(dir)) return null;
+    const files = fs.readdirSync(dir);
+    for (const f of files) {
+      const fp = path.join(dir, f);
+      if (fs.statSync(fp).isDirectory()) {
+        const res = findJavaw(fp);
+        if (res) return res;
+      } else if (f.toLowerCase() === 'javaw.exe') {
+        return fp;
+      }
+    }
+    return null;
+  };
+
+  const existingJavaw = findJavaw(javaFolder);
+  if (existingJavaw) {
+    return existingJavaw;
+  }
+
+  console.log("[JAVA] Aucun Java 17 trouvé. Téléchargement d'un JRE portable...");
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('launch-progress', { type: 'Téléchargement Java 17 (obligatoire)...', task: 5, total: 100 });
+  }
+
+  const runtimeDir = path.join(gameRoot, 'runtime');
+  if (!fs.existsSync(runtimeDir)) fs.mkdirSync(runtimeDir, { recursive: true });
+
+  const zipPath = path.join(runtimeDir, 'java-17.zip');
+  const downloadUrl = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.10%2B7/OpenJDK17U-jre_x64_windows_hotspot_17.0.10_7.zip";
+
+  await downloadFile(downloadUrl, zipPath);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('launch-progress', { type: 'Extraction de Java...', task: 15, total: 100 });
+  }
+
+  return new Promise((resolve, reject) => {
+    const cmd = `powershell -Command "Expand-Archive -Path '${zipPath.replace(/'/g, "''")}' -DestinationPath '${javaFolder.replace(/'/g, "''")}' -Force"`;
+    exec(cmd, (err) => {
+      try { fs.unlinkSync(zipPath); } catch (e) {}
+
+      if (err) {
+        console.error("[JAVA EXTRACTION ERROR]", err);
+        reject(err);
+      } else {
+        const foundPath = findJavaw(javaFolder);
+        if (foundPath) {
+          console.log("[JAVA] Java portable installé avec succès :", foundPath);
+          resolve(foundPath);
+        } else {
+          reject(new Error("javaw.exe introuvable après extraction"));
+        }
+      }
+    });
+  });
+}
+
 ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
   if (isGameRunning) return;
   isGameRunning = true;
@@ -377,6 +439,17 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
 
   try {
     if (!fs.existsSync(GAME_ROOT)) fs.mkdirSync(GAME_ROOT, { recursive: true });
+
+    // Détection et installation de Java portable si manquant
+    let javaExecutable = getJavaPath();
+    if (javaExecutable === "javaw" && process.platform === 'win32') {
+      try {
+        javaExecutable = await setupPortableJava(GAME_ROOT);
+      } catch (err) {
+        console.error("[JAVA DOWNLOAD FAIL]", err);
+        javaExecutable = "javaw";
+      }
+    }
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('launch-progress', { type: 'Chargement Forge...', task: 20, total: 100 });
@@ -426,7 +499,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
       version: { number: "1.20.1", type: "release", custom: "1.20.1-forge-47.4.20" },
       memory: { max: `${ram}G`, min: "2G" },
       window: { title: "ElderSea RPG 1.20.1", width: 1280, height: 720 },
-      javaPath: getJavaPath(),
+      javaPath: javaExecutable,
       customArgs: [
         "-DlibraryDirectory=" + libsDir,
         "-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,forge-,1.20.1-forge-47.4.20.jar",
@@ -482,4 +555,53 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         mainWindow.webContents.send('launch-error', error.message);
     }
   }
+});
+
+// Configuration de l'autoUpdater avec envoi du statut au Renderer React
+autoUpdater.on('checking-for-update', () => {
+  console.log('[UPDATER] Recherche de mise à jour...');
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', { status: 'checking' });
+  }
+});
+
+autoUpdater.on('update-available', (info) => {
+  console.log('[UPDATER] Nouvelle mise à jour trouvée:', info.version);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', { status: 'available', version: info.version });
+  }
+});
+
+autoUpdater.on('update-not-available', () => {
+  console.log('[UPDATER] Aucune mise à jour disponible.');
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', { status: 'not-available' });
+  }
+});
+
+autoUpdater.on('error', (err) => {
+  console.error('[UPDATER ERROR]', err);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', { status: 'error', message: err.message || err.toString() });
+  }
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', { 
+      status: 'downloading', 
+      percent: Math.round(progressObj.percent)
+    });
+  }
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('[UPDATER] Mise à jour téléchargée:', info.version);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', { status: 'downloaded', version: info.version });
+  }
+});
+
+ipcMain.on('install-update', () => {
+  autoUpdater.quitAndInstall();
 });
