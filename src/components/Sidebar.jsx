@@ -2,6 +2,7 @@ import React from 'react';
 import { useSettingsStore, useAuthStore } from '../store/useStore';
 import { translations } from '../translations';
 import { Home, Package, Camera, ShoppingBag, Settings, User, ChevronDown, LogOut, ChevronUp } from 'lucide-react';
+import packageJson from '../../package.json';
 
 const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfileOpen, onToggleProfile }) => {
   const { language } = useSettingsStore();
@@ -54,7 +55,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
         />
         <div className="logo-text" style={{ marginTop: '15px' }}>
           <span className="version cinzel" style={{ fontSize: '10px', color: 'var(--purple-light)', letterSpacing: '2px' }}>
-            V1.0.0 MODDED 1.20.1
+            V{packageJson.version} MODDED 1.20.1
           </span>
         </div>
       </div>

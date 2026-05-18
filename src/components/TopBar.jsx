@@ -2,6 +2,7 @@ import React from 'react';
 import { useAuthStore, useSettingsStore } from '../store/useStore';
 import { translations } from '../translations';
 import { User, ChevronDown, LogOut, Minus, X as CloseIcon } from 'lucide-react';
+import packageJson from '../../package.json';
 
 const TopBar = ({ onOpenAuth, onOpenSettings, setActiveTab, onToggleProfile, isProfileOpen }) => {
   const { user, isLoggedIn, logout } = useAuthStore();
@@ -53,7 +54,7 @@ const TopBar = ({ onOpenAuth, onOpenSettings, setActiveTab, onToggleProfile, isP
         position: 'relative', zIndex: 1001, fontSize: '13px', color: 'var(--crystal)', 
         letterSpacing: '2px', pointerEvents: 'none', opacity: 0.8
       }}>
-        ELDERSEA <span style={{ color: 'var(--purple)', marginLeft: '8px', fontSize: '10px' }}>V1.0.0</span>
+        ELDERSEA <span style={{ color: 'var(--purple)', marginLeft: '8px', fontSize: '10px' }}>V{packageJson.version}</span>
       </div>
 
       <div className="window-controls-wrapper" style={{ 

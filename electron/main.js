@@ -45,9 +45,11 @@ if (!gotTheLock) {
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
     // Si quelqu'un essaie de lancer une deuxième instance, on focalise notre fenêtre.
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
+    } else {
+      createWindow();
     }
   });
 
@@ -62,6 +64,10 @@ if (!gotTheLock) {
       },
       backgroundColor: '#0a0a0a', show: false,
       icon: path.join(__dirname, '../dist/logoapp.png')
+    });
+
+    mainWindow.on('closed', () => {
+      mainWindow = null;
     });
 
     if (process.env.NODE_ENV === 'development') {
@@ -101,7 +107,11 @@ if (!gotTheLock) {
   }, 10000);
 }
 
-app.on('window-all-closed', (e) => { e.preventDefault(); });
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
 
 ipcMain.handle('check-game-running', async () => {
   isGameRunning = await checkIfGameIsRunning();
@@ -313,6 +323,53 @@ async function syncHTTP(gameRoot) {
   }
 }
 
+function getJavaPath() {
+  if (process.platform !== 'win32') {
+    return 'java';
+  }
+
+  const defaultPath = "C:\\Program Files\\Java\\jdk-17\\bin\\javaw.exe";
+  if (fs.existsSync(defaultPath)) return defaultPath;
+
+  const adoptiumDir = "C:\\Program Files\\Eclipse Adoptium";
+  if (fs.existsSync(adoptiumDir)) {
+    try {
+      const dirs = fs.readdirSync(adoptiumDir);
+      const jdk17Dir = dirs.find(d => d.startsWith('jdk-17'));
+      if (jdk17Dir) {
+        const p = path.join(adoptiumDir, jdk17Dir, 'bin', 'javaw.exe');
+        if (fs.existsSync(p)) return p;
+      }
+    } catch (e) {}
+  }
+
+  const javaDir = "C:\\Program Files\\Java";
+  if (fs.existsSync(javaDir)) {
+    try {
+      const dirs = fs.readdirSync(javaDir);
+      const jdk17Dir = dirs.find(d => d.startsWith('jdk-17') || d.startsWith('jre-17'));
+      if (jdk17Dir) {
+        const p = path.join(javaDir, jdk17Dir, 'bin', 'javaw.exe');
+        if (fs.existsSync(p)) return p;
+      }
+    } catch (e) {}
+  }
+
+  const localAppData = process.env.LOCALAPPDATA || '';
+  const officialMcJava = path.join(localAppData, 'Packages', 'Microsoft.4294827C24A01_8wekyb3d8bbwe', 'LocalCache', 'Local', 'runtime', 'java-runtime-gamma', 'windows-x64', 'java-runtime-gamma', 'bin', 'javaw.exe');
+  if (fs.existsSync(officialMcJava)) return officialMcJava;
+
+  const programFiles = process.env.PROGRAMFILES || 'C:\\Program Files';
+  const officialMcJavaStandalone = path.join(programFiles, 'Minecraft Launcher', 'runtime', 'java-runtime-gamma', 'windows-x64', 'java-runtime-gamma', 'bin', 'javaw.exe');
+  if (fs.existsSync(officialMcJavaStandalone)) return officialMcJavaStandalone;
+
+  const programFilesX86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+  const officialMcJavaStandaloneX86 = path.join(programFilesX86, 'Minecraft Launcher', 'runtime', 'java-runtime-gamma', 'windows-x64', 'java-runtime-gamma', 'bin', 'javaw.exe');
+  if (fs.existsSync(officialMcJavaStandaloneX86)) return officialMcJavaStandaloneX86;
+
+  return "javaw";
+}
+
 ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
   if (isGameRunning) return;
   isGameRunning = true;
@@ -369,7 +426,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
       version: { number: "1.20.1", type: "release", custom: "1.20.1-forge-47.4.20" },
       memory: { max: `${ram}G`, min: "2G" },
       window: { title: "ElderSea RPG 1.20.1", width: 1280, height: 720 },
-      javaPath: "C:\\Program Files\\Java\\jdk-17\\bin\\javaw.exe",
+      javaPath: getJavaPath(),
       customArgs: [
         "-DlibraryDirectory=" + libsDir,
         "-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,forge-,1.20.1-forge-47.4.20.jar",
