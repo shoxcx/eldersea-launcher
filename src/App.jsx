@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { X, Lightbulb, RefreshCw, AlertTriangle, CheckCircle, Download, Package, Zap } from 'lucide-react';
+import Sidebar from './components/Sidebar';
+import TopBar from './components/TopBar';
+import HomeView from './views/HomeView';
+import ModsView from './views/ModsView';
+import ScreenshotsView from './views/ScreenshotsView';
+import ShopView from './views/ShopView';
+import ProfileView from './views/ProfileView';
+import AuthModal from './components/AuthModal';
+import SettingsModal from './components/SettingsModal';
+import { useAuthStore } from './store/useStore';
 
 function App() {
   const { isLoggedIn } = useAuthStore();
