@@ -485,11 +485,11 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     const modulePath = [
       path.join(libsDir, 'cpw/mods/bootstraplauncher/1.1.2/bootstraplauncher-1.1.2.jar'),
       path.join(libsDir, 'cpw/mods/securejarhandler/2.1.10/securejarhandler-2.1.10.jar'),
-      path.join(libsDir, 'org/ow2/asm/asm-commons/9.7/asm-commons-9.7.jar'),
-      path.join(libsDir, 'org/ow2/asm/asm-util/9.7/asm-util-9.7.jar'),
-      path.join(libsDir, 'org/ow2/asm/asm-analysis/9.7/asm-analysis-9.7.jar'),
-      path.join(libsDir, 'org/ow2/asm/asm-tree/9.7/asm-tree-9.7.jar'),
-      path.join(libsDir, 'org/ow2/asm/asm/9.7/asm-9.7.jar'),
+      path.join(libsDir, 'org/ow2/asm/asm-commons/9.9.1/asm-commons-9.9.1.jar'),
+      path.join(libsDir, 'org/ow2/asm/asm-util/9.9.1/asm-util-9.9.1.jar'),
+      path.join(libsDir, 'org/ow2/asm/asm-analysis/9.9.1/asm-analysis-9.9.1.jar'),
+      path.join(libsDir, 'org/ow2/asm/asm-tree/9.9.1/asm-tree-9.9.1.jar'),
+      path.join(libsDir, 'org/ow2/asm/asm/9.9.1/asm-9.9.1.jar'),
       path.join(libsDir, 'net/minecraftforge/JarJarFileSystems/0.3.19/JarJarFileSystems-0.3.19.jar')
     ].join(cpSep);
 
