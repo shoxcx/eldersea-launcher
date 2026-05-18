@@ -518,8 +518,12 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     };
     
     let gameStarted = false;
+    let jvmLogs = [];
     launcher.on('data', (e) => {
         console.log("[JVM]", e);
+        jvmLogs.push(e);
+        if (jvmLogs.length > 50) jvmLogs.shift();
+        
         if (!gameStarted) {
             gameStarted = true;
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -536,11 +540,16 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         }
     });
     launcher.on('progress', (e) => mainWindow.webContents.send('launch-progress', e));
-    launcher.on('close', () => {
+    launcher.on('close', (code) => {
         isGameRunning = false;
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('game-status', false);
             mainWindow.webContents.send('launch-finished');
+            
+            if (code !== 0 && code !== null) {
+                const logsText = jvmLogs.join('\n');
+                mainWindow.webContents.send('launch-error', `Le jeu a planté (Code de sortie: ${code}).\n\nDernières lignes de la console :\n${logsText}`);
+            }
         }
     });
 
