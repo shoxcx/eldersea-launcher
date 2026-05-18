@@ -545,7 +545,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     });
 
     console.log("[FORGE] Lancement du moteur...");
-    launcher.launch(opts);
+    await launcher.launch(opts);
     
   } catch (error) {
     isGameRunning = false;
