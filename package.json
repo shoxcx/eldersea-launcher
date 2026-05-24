@@ -1,7 +1,7 @@
 {
   "name": "eldersea",
   "private": true,
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "ElderSea Minecraft Launcher",
   "author": "ElderSea Team",
   "type": "module",

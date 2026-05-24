@@ -26,7 +26,7 @@ const HomeView = ({ onOpenAuth, setSelectedNews }) => {
 
     const fetchNews = async () => {
       try {
-        const res = await fetch('https://oracle-73d32-default-rtdb.europe-west1.firebasedatabase.app/eldersea_news.json');
+        const res = await fetch('https://flores-studio.tekao.fr/api/news');
         if (!res.ok) return;
         const data = await res.json();
         if (data && !data.error) {

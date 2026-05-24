@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, protocol, net, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, protocol, net, dialog, Tray, Menu } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
@@ -17,8 +17,16 @@ const __dirname = path.dirname(__filename);
 
 let mainWindow;
 let isGameRunning = false;
+let tray = null;
+let backgroundMode = true; // Match the Zustand store default value
 const launcher = new Client();
 const GAME_ROOT = path.join(process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME), '.eldersea');
+
+const getIconPath = () => {
+  const devPath = path.join(__dirname, '../public/logoapp.png');
+  const prodPath = path.join(__dirname, '../dist/logoapp.png');
+  return fs.existsSync(prodPath) ? prodPath : devPath;
+};
 
 
 function checkIfGameIsRunning() {
@@ -121,6 +129,23 @@ ipcMain.handle('check-game-running', async () => {
 ipcMain.on('window-control', (event, action) => {
   if (action === 'minimize') mainWindow.minimize();
   if (action === 'close') app.quit();
+});
+
+ipcMain.on('set-launch-on-startup', (event, enable) => {
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: enable,
+      path: process.execPath
+    });
+    console.log(`[STARTUP] Set openAtLogin to ${enable}`);
+  } catch (err) {
+    console.error('[STARTUP ERROR]', err);
+  }
+});
+
+ipcMain.on('set-background-mode', (event, enable) => {
+  backgroundMode = enable;
+  console.log(`[SETTINGS] Set backgroundMode to ${enable}`);
 });
 
 ipcMain.on('open-folder', (event, folderName) => {
@@ -432,6 +457,51 @@ async function setupPortableJava(gameRoot) {
   });
 }
 
+function createTray() {
+  if (tray) return;
+
+  const iconPath = getIconPath();
+  try {
+    tray = new Tray(iconPath);
+    tray.setToolTip('ElderSea RPG');
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Afficher le launcher',
+        click: () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Quitter',
+        click: () => {
+          app.quit();
+        }
+      }
+    ]);
+
+    tray.setContextMenu(contextMenu);
+
+    tray.on('click', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isVisible()) {
+          mainWindow.hide();
+        } else {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      }
+    });
+    console.log('[TRAY] System tray created successfully');
+  } catch (err) {
+    console.error('[TRAY ERROR]', err);
+  }
+}
+
 ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
   if (isGameRunning) return;
   isGameRunning = true;
@@ -454,7 +524,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('launch-progress', { type: 'Chargement Forge...', task: 20, total: 100 });
     }
-    await syncHTTP(GAME_ROOT);
+    // await syncHTTP(GAME_ROOT);
     
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('launch-progress', { type: 'Décollage...', task: 80, total: 100 });
@@ -528,6 +598,10 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
             gameStarted = true;
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('hide-progress');
+              if (backgroundMode) {
+                mainWindow.hide();
+                createTray();
+              }
             }
         }
     });
@@ -540,11 +614,31 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         }
     });
     launcher.on('progress', (e) => mainWindow.webContents.send('launch-progress', e));
+    launcher.on('download-status', (e) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('launch-progress', {
+                type: e.type,
+                task: e.current,
+                total: e.total,
+                filename: e.name
+            });
+        }
+    });
     launcher.on('close', (code) => {
         isGameRunning = false;
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('game-status', false);
             mainWindow.webContents.send('launch-finished');
+            
+            // Restore launcher window
+            mainWindow.show();
+            mainWindow.focus();
+
+            // Destroy system tray icon
+            if (tray) {
+              tray.destroy();
+              tray = null;
+            }
             
             if (code !== 0 && code !== null) {
                 const logsText = jvmLogs.join('\n');

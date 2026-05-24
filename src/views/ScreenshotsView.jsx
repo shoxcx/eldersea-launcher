@@ -77,7 +77,9 @@ const ScreenshotsView = ({ setFullscreen }) => {
       ) : (
         <div className="screenshot-grid" style={{ 
           display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', 
-          gap: '25px', overflowY: 'auto', paddingBottom: '30px', paddingRight: '10px' 
+          gridAutoRows: 'max-content',
+          gap: '25px', overflowY: 'auto', paddingBottom: '30px', paddingRight: '10px',
+          flex: 1, minHeight: 0
         }}>
           {screenshots.map((s, i) => (
             <div key={s.fullPath || i} className="screenshot-card glass-panel" style={{ overflow: 'hidden', cursor: 'default', position: 'relative' }}>

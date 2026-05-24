@@ -71,7 +71,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
             className={`nav-item ${activeTab === item.id ? 'active' : ''} ${item.special || ''}`}
             onClick={() => {
               if (item.id === 'shop') {
-                window.ipcRenderer.send('open-external-url', 'https://eldersea.tekao.fr');
+                window.ipcRenderer.send('open-external-url', 'https://eldersea.tekao.fr/boutique');
               } else {
                 setActiveTab(item.id);
               }

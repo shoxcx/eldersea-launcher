@@ -9,10 +9,11 @@ import ShopView from './views/ShopView';
 import ProfileView from './views/ProfileView';
 import AuthModal from './components/AuthModal';
 import SettingsModal from './components/SettingsModal';
-import { useAuthStore } from './store/useStore';
+import { useAuthStore, useSettingsStore } from './store/useStore';
 
 function App() {
   const { isLoggedIn } = useAuthStore();
+  const { launchOnStartup, backgroundMode } = useSettingsStore();
   const [activeTab, setActiveTab] = useState('home');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -25,6 +26,20 @@ function App() {
   // Update state from Electron
   const [updateState, setUpdateState] = useState(null);
 
+  // Sync launch on startup to Electron
+  useEffect(() => {
+    if (window.ipcRenderer) {
+      window.ipcRenderer.send('set-launch-on-startup', launchOnStartup);
+    }
+  }, [launchOnStartup]);
+
+  // Sync background mode to Electron
+  useEffect(() => {
+    if (window.ipcRenderer) {
+      window.ipcRenderer.send('set-background-mode', backgroundMode);
+    }
+  }, [backgroundMode]);
+
   // Redirect to home on logout
   useEffect(() => {
     if (!isLoggedIn) {
@@ -36,17 +51,18 @@ function App() {
   useEffect(() => {
     if (window.ipcRenderer) {
       const handleProgress = (event, data) => {
-        // data: { type: string, task: number, total: number }
+        // data: { type: string, task: number, total: number, filename?: string }
         let progress = 0;
         if (data.total && data.total > 0) {
-          progress = Math.round((data.task / data.total) * 100);
+          progress = Math.min(100, Math.round((data.task / data.total) * 100));
         }
         
         setDownloadInfo(prev => ({
           type: data.type || (prev?.type || '...'),
           progress: progress > 0 ? progress : (prev?.progress || 0),
           task: data.task || 0,
-          total: data.total || 100
+          total: data.total || 100,
+          filename: data.filename || null
         }));
         
         if (data.type === 'finished') {
@@ -170,6 +186,18 @@ function App() {
               <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '2px', textTransform: 'uppercase' }}>
                 {downloadInfo.type} ({downloadInfo.progress}%)
               </div>
+              {downloadInfo.filename && (
+                <div 
+                  style={{ 
+                    fontSize: '9px', color: 'var(--text-muted)', marginTop: '4px',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    maxWidth: '180px', opacity: 0.8, fontFamily: 'monospace'
+                  }}
+                  title={downloadInfo.filename}
+                >
+                  {downloadInfo.filename}
+                </div>
+              )}
             </div>
           </div>
 
