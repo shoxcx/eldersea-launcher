@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ElderSea - Console de Lancement</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #090c10;
+      --bg-panel: #111720;
+      --bg-card: #161e29;
+      --purple: #d4af37; /* Gold */
+      --purple-light: #f3e5ab; /* Light gold */
+      --crystal: #f8f3d4; /* Bone white */
+      --border: rgba(212, 175, 55, 0.15);
+      --border-bright: rgba(212, 175, 55, 0.4);
+      --text-primary: #cbd5e1; /* Silver */
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      user-select: text;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: linear-gradient(180deg, var(--bg-panel) 0%, var(--bg-dark) 100%);
+      color: var(--text-primary);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border);
+    }
+
+    /* ── TITLE BAR ── */
+    .title-bar {
+      height: 44px;
+      background: var(--bg-dark);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 16px;
+      -webkit-app-region: drag;
+      flex-shrink: 0;
+    }
+
+    .title-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 1px;
+      color: var(--purple-light);
+      text-transform: uppercase;
+    }
+
+    .title-brand img {
+      width: 18px;
+      height: 18px;
+    }
+
+    .window-controls {
+      display: flex;
+      gap: 8px;
+      -webkit-app-region: no-drag;
+    }
+
+    .control-btn {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      outline: none;
+      transition: transform 0.2s ease;
+    }
+
+    .control-btn.minimize {
+      background: #eab308;
+    }
+
+    .control-btn.close {
+      background: #ef4444;
+    }
+
+    .control-btn:hover {
+      transform: scale(1.2);
+    }
+
+    /* ── LOGS WRAPPER ── */
+    .logs-container {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      background: #05070a;
+      border: 1px solid rgba(255, 255, 255, 0.02);
+      margin: 12px;
+      border-radius: 8px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12.5px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* ── Scrollbars ── */
+    .logs-container::-webkit-scrollbar {
+      width: 6px;
+    }
+    .logs-container::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .logs-container::-webkit-scrollbar-thumb {
+      background: var(--border-bright);
+      border-radius: 10px;
+    }
+    .logs-container::-webkit-scrollbar-thumb:hover {
+      background: var(--purple);
+    }
+
+    /* ── Syntax highlighting ── */
+    .log-line {
+      display: block;
+      margin-bottom: 2px;
+      color: #94a3b8;
+    }
+    .log-info {
+      color: #cbd5e1;
+    }
+    .log-warn {
+      color: #f3e5ab; /* gold */
+      background: rgba(212, 175, 55, 0.05);
+    }
+    .log-error {
+      color: #fca5a5; /* crimson/red */
+      background: rgba(239, 68, 68, 0.08);
+      font-weight: 600;
+    }
+    .log-system {
+      color: var(--purple);
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── UTILITY FOOTER BAR ── */
+    .footer {
+      height: 48px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-dark);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .footer-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .footer-btn {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      color: var(--purple-light);
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Outfit', sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.2s ease;
+    }
+
+    .footer-btn:hover {
+      background: var(--purple);
+      color: #111;
+      border-color: var(--purple-light);
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #d4af37;
+      box-shadow: 0 0 8px #d4af37;
+    }
+
+    .status-dot.active {
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+
+    .status-dot.crashed {
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+    }
+
+    .autoscroll-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .autoscroll-toggle input {
+      accent-color: var(--purple);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Custom Title Bar -->
+  <div class="title-bar">
+    <div class="title-brand">
+      <img src="../public/logoapp.png" alt="Logo">
+      <span>ElderSea Console</span>
+    </div>
+    <div class="window-controls">
+      <button class="control-btn minimize" id="btn-minimize"></button>
+      <button class="control-btn close" id="btn-close"></button>
+    </div>
+  </div>
+
+  <!-- Logs Container -->
+  <div class="logs-container" id="logs-box"></div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="status-indicator">
+      <div class="status-dot" id="status-indicator-dot"></div>
+      <span id="status-indicator-text">Initialisation...</span>
+    </div>
+    <div class="footer-actions">
+      <label class="autoscroll-toggle">
+        <input type="checkbox" id="chk-autoscroll" checked>
+        <span>Défilement Auto</span>
+      </label>
+      <button class="footer-btn" id="btn-copy">Copier</button>
+      <button class="footer-btn" id="btn-clear">Effacer</button>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    const logsBox = document.getElementById('logs-box');
+    const chkAutoscroll = document.getElementById('chk-autoscroll');
+    const statusText = document.getElementById('status-indicator-text');
+    const statusDot = document.getElementById('status-indicator-dot');
+
+    // Titlebar buttons
+    document.getElementById('btn-minimize').addEventListener('click', () => {
+      ipcRenderer.send('console-window-control', 'minimize');
+    });
+    document.getElementById('btn-close').addEventListener('click', () => {
+      ipcRenderer.send('console-window-control', 'close');
+    });
+
+    // Action buttons
+    document.getElementById('btn-clear').addEventListener('click', () => {
+      logsBox.innerHTML = '';
+      appendSystemLog('Console effacée.');
+    });
+
+    document.getElementById('btn-copy').addEventListener('click', () => {
+      const text = logsBox.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        appendSystemLog('Logs copiés dans le presse-papiers.');
+      }).catch(err => {
+        console.error('Copy failed:', err);
+      });
+    });
+
+    // Formatting rules
+    function formatLogLine(text) {
+      if (!text) return '';
+      const lineSpan = document.createElement('span');
+      lineSpan.className = 'log-line';
+
+      const lowerText = text.toLowerCase();
+      if (lowerText.includes('[error]') || lowerText.includes('[severe]') || lowerText.includes('exception') || lowerText.includes('failed')) {
+        lineSpan.classList.add('log-error');
+      } else if (lowerText.includes('[warn]') || lowerText.includes('[warning]') || lowerText.includes('[debug]')) {
+        lineSpan.classList.add('log-warn');
+      } else {
+        lineSpan.classList.add('log-info');
+      }
+
+      lineSpan.textContent = text;
+      return lineSpan;
+    }
+
+    function appendSystemLog(text) {
+      const lineSpan = document.createElement('span');
+      lineSpan.className = 'log-line log-system';
+      lineSpan.textContent = `[ELDERSEA] ${text}`;
+      logsBox.appendChild(lineSpan);
+      scrollToBottom();
+    }
+
+    function scrollToBottom() {
+      if (chkAutoscroll.checked) {
+        logsBox.scrollTop = logsBox.scrollHeight;
+      }
+    }
+
+    // IPC Events
+    ipcRenderer.on('init-logs', (event, logs) => {
+      logsBox.innerHTML = '';
+      appendSystemLog('Connexion à la console établie.');
+      if (logs && logs.length > 0) {
+        logs.forEach(log => {
+          logsBox.appendChild(formatLogLine(log));
+        });
+      }
+      scrollToBottom();
+    });
+
+    ipcRenderer.on('new-log', (event, log) => {
+      logsBox.appendChild(formatLogLine(log));
+      scrollToBottom();
+    });
+
+    ipcRenderer.on('game-status', (event, status) => {
+      statusDot.className = 'status-dot';
+      if (status === 'running') {
+        statusDot.classList.add('active');
+        statusText.textContent = "Jeu en cours d'exécution";
+      } else if (status === 'crashed') {
+        statusDot.classList.add('crashed');
+        statusText.textContent = "Jeu arrêté anormalement (Crash)";
+      } else {
+        statusText.textContent = "Jeu arrêté";
+      }
+    });
+  </script>
+</body>
+</html>

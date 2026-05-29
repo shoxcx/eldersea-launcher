@@ -13,7 +13,7 @@ import { useAuthStore, useSettingsStore } from './store/useStore';
 
 function App() {
   const { isLoggedIn } = useAuthStore();
-  const { launchOnStartup, backgroundMode } = useSettingsStore();
+  const { launchOnStartup, backgroundMode, showConsole } = useSettingsStore();
   const [activeTab, setActiveTab] = useState('home');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -39,6 +39,13 @@ function App() {
       window.ipcRenderer.send('set-background-mode', backgroundMode);
     }
   }, [backgroundMode]);
+
+  // Sync show console to Electron
+  useEffect(() => {
+    if (window.ipcRenderer) {
+      window.ipcRenderer.send('set-show-console', showConsole);
+    }
+  }, [showConsole]);
 
   // Redirect to home on logout
   useEffect(() => {

@@ -12,6 +12,8 @@ const { Client, Authenticator } = pkg;
 import pkgUpdater from 'electron-updater';
 const { autoUpdater } = pkgUpdater;
 
+import DiscordRPC from 'discord-rpc';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -19,8 +21,131 @@ let mainWindow;
 let isGameRunning = false;
 let tray = null;
 let backgroundMode = true; // Match the Zustand store default value
+let showConsole = false;
+let consoleWindow = null;
+let logBuffer = [];
+
 const launcher = new Client();
 const GAME_ROOT = path.join(process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME), '.eldersea');
+
+// Configuration du Discord Rich Presence
+// Pour afficher "Joue à ElderSea", créez une application nommée "ElderSea" sur le portail des développeurs Discord :
+// https://discord.com/developers/applications
+// Copiez ensuite son "Application ID" (Client ID) ci-dessous.
+const clientId = '1509891048309133434'; // Remplacer par votre Client ID Discord réel
+let rpc = null;
+let rpcReady = false;
+
+function initDiscordRPC() {
+  if (rpc) return;
+  
+  // Validation du Client ID pour éviter les tentatives de connexion avec un ID fictif ou invalide
+  if (!clientId || clientId === '137766699999999999' || !/^\d{17,19}$/.test(clientId)) {
+    console.log('[DISCORD] Rich Presence inactive (Client ID non configuré ou fictif).');
+    console.log('[DISCORD] Pour configurer la Rich Presence :');
+    console.log('[DISCORD] 1. Allez sur https://discord.com/developers/applications');
+    console.log('[DISCORD] 2. Créez une application nommée "ElderSea"');
+    console.log('[DISCORD] 3. Remplacez "clientId" dans electron/main.js par votre "Application ID"');
+    return;
+  }
+
+  try {
+    rpc = new DiscordRPC.Client({ transport: 'ipc' });
+
+    rpc.on('ready', () => {
+      console.log('[DISCORD] Rich Presence connected!');
+      rpcReady = true;
+      setDiscordActivity('Dans le launcher', 'Prêt à naviguer');
+    });
+
+    rpc.login({ clientId }).catch(err => {
+      console.error('[DISCORD ERROR] Échec de connexion à Discord:', err.message);
+    });
+  } catch (err) {
+    console.error('[DISCORD INIT ERROR]', err);
+  }
+}
+
+function setDiscordActivity(details, state, startTime = null, showPlayButton = false) {
+  if (!rpc || !rpcReady) return;
+  try {
+    const activity = {
+      details,
+      state,
+      largeImageKey: 'logoapp',
+      largeImageText: 'ElderSea RPG',
+      instance: false,
+      buttons: [
+        { label: 'Rejoindre', url: 'https://eldersea.tekao.fr' }
+      ]
+    };
+    
+    if (startTime) {
+      activity.startTimestamp = startTime;
+    }
+    
+    if (showPlayButton) {
+      activity.smallImageKey = 'play';
+      activity.smallImageText = 'En Jeu';
+    }
+
+    rpc.setActivity(activity).catch(err => {
+      console.error('[DISCORD SET ACTIVITY ERROR]', err);
+    });
+  } catch (err) {
+    console.error('[DISCORD ACTIVITY ERROR]', err);
+  }
+}
+
+function appendToLogBuffer(log) {
+  if (!log) return;
+  logBuffer.push(log);
+  if (logBuffer.length > 500) {
+    logBuffer.shift();
+  }
+  if (consoleWindow && !consoleWindow.isDestroyed()) {
+    consoleWindow.webContents.send('new-log', log);
+  }
+}
+
+function createConsoleWindow() {
+  if (consoleWindow && !consoleWindow.isDestroyed()) {
+    consoleWindow.focus();
+    return;
+  }
+
+  consoleWindow = new BrowserWindow({
+    width: 900,
+    height: 550,
+    frame: false,
+    resizable: true,
+    minWidth: 600,
+    minHeight: 400,
+    title: "ElderSea - Console de Lancement",
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      webSecurity: false
+    },
+    backgroundColor: '#090c10',
+    show: false,
+    icon: getIconPath()
+  });
+
+  consoleWindow.loadFile(path.join(__dirname, 'console.html'));
+
+  consoleWindow.once('ready-to-show', () => {
+    if (consoleWindow && !consoleWindow.isDestroyed()) {
+      consoleWindow.show();
+      consoleWindow.webContents.send('init-logs', logBuffer);
+      consoleWindow.webContents.send('game-status', isGameRunning ? 'running' : 'idle');
+    }
+  });
+
+  consoleWindow.on('closed', () => {
+    consoleWindow = null;
+  });
+}
 
 const getIconPath = () => {
   const devPath = path.join(__dirname, '../public/logoapp.png');
@@ -99,7 +224,10 @@ if (!gotTheLock) {
     });
   }
 
-  app.whenReady().then(createWindow);
+  app.whenReady().then(() => {
+    createWindow();
+    initDiscordRPC();
+  });
 
   // Vérification périodique (toutes les 10 secondes) au cas où le jeu est fermé manuellement
   setInterval(async () => {
@@ -129,6 +257,25 @@ ipcMain.handle('check-game-running', async () => {
 ipcMain.on('window-control', (event, action) => {
   if (action === 'minimize') mainWindow.minimize();
   if (action === 'close') app.quit();
+});
+
+ipcMain.on('console-window-control', (event, action) => {
+  if (!consoleWindow || consoleWindow.isDestroyed()) return;
+  if (action === 'minimize') consoleWindow.minimize();
+  if (action === 'close') consoleWindow.close();
+});
+
+ipcMain.on('set-show-console', (event, enable) => {
+  showConsole = enable;
+  console.log(`[SETTINGS] Set showConsole to ${enable}`);
+});
+
+app.on('will-quit', () => {
+  if (rpc) {
+    try {
+      rpc.destroy();
+    } catch (e) {}
+  }
 });
 
 ipcMain.on('set-launch-on-startup', (event, enable) => {
@@ -507,6 +654,23 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
   isGameRunning = true;
   mainWindow.webContents.send('game-status', true);
 
+  if (showConsole) {
+    createConsoleWindow();
+  } else {
+    if (consoleWindow && !consoleWindow.isDestroyed()) {
+      consoleWindow.close();
+    }
+  }
+
+  logBuffer = [];
+  appendToLogBuffer("[MCLC] Début du lancement d'ElderSea...");
+
+  if (consoleWindow && !consoleWindow.isDestroyed()) {
+    consoleWindow.webContents.send('game-status', 'running');
+  }
+
+  setDiscordActivity('Préparation du jeu...', 'Vérification des ressources', Date.now());
+
   try {
     if (!fs.existsSync(GAME_ROOT)) fs.mkdirSync(GAME_ROOT, { recursive: true });
 
@@ -517,6 +681,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         javaExecutable = await setupPortableJava(GAME_ROOT);
       } catch (err) {
         console.error("[JAVA DOWNLOAD FAIL]", err);
+        appendToLogBuffer(`[WARN] Échec de la configuration Java: ${err.message}`);
         javaExecutable = "javaw";
       }
     }
@@ -524,11 +689,14 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('launch-progress', { type: 'Chargement Forge...', task: 20, total: 100 });
     }
+    appendToLogBuffer("[MCLC] Chargement de Forge...");
     // await syncHTTP(GAME_ROOT);
     
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('launch-progress', { type: 'Décollage...', task: 80, total: 100 });
     }
+    appendToLogBuffer("[MCLC] Décollage imminent...");
+
     // Pour Forge 1.20.1, on utilise l'ID de version forge correspondant
     const forgeVersion = "1.20.1-forge-47.4.20"; 
     const criticalFiles = [
@@ -540,6 +708,9 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
       console.log(`[DEBUG] Checking ${f}: ${fs.existsSync(f) ? 'EXISTS' : 'MISSING'}`);
       if (fs.existsSync(f)) {
         console.log(`[DEBUG] Size: ${fs.statSync(f).size} bytes`);
+        appendToLogBuffer(`[MCLC] Fichier critique valide: ${path.basename(f)}`);
+      } else {
+        appendToLogBuffer(`[WARN] Fichier critique manquant: ${path.basename(f)}`);
       }
     });
 
@@ -594,8 +765,11 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         jvmLogs.push(e);
         if (jvmLogs.length > 50) jvmLogs.shift();
         
+        appendToLogBuffer(e);
+        
         if (!gameStarted) {
             gameStarted = true;
+            setDiscordActivity('En jeu', `Joueur : ${pseudo || 'Joueur'}`, Date.now(), true);
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('hide-progress');
               if (backgroundMode) {
@@ -606,14 +780,26 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         }
     });
 
-    launcher.on('debug', (e) => console.log("[DEBUG]", e));
+    launcher.on('debug', (e) => {
+      console.log("[DEBUG]", e);
+      appendToLogBuffer(`[DEBUG] ${e}`);
+    });
+    
     launcher.on('error', (e) => {
         console.error("[MCLC ERROR]", e);
+        appendToLogBuffer(`[ERROR] ${e}`);
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('launch-error', e.toString());
         }
     });
-    launcher.on('progress', (e) => mainWindow.webContents.send('launch-progress', e));
+    
+    launcher.on('progress', (e) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('launch-progress', e);
+      }
+      appendToLogBuffer(`[MCLC] Progression: ${e.type} (${e.task}/${e.total})`);
+    });
+    
     launcher.on('download-status', (e) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('launch-progress', {
@@ -623,9 +809,17 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
                 filename: e.name
             });
         }
+        appendToLogBuffer(`[DL] ${e.type}: ${e.name} (${e.current}/${e.total})`);
     });
+    
     launcher.on('close', (code) => {
         isGameRunning = false;
+        setDiscordActivity('Dans le launcher', 'Prêt à naviguer');
+
+        if (consoleWindow && !consoleWindow.isDestroyed()) {
+          consoleWindow.webContents.send('game-status', code !== 0 && code !== null ? 'crashed' : 'idle');
+        }
+
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('game-status', false);
             mainWindow.webContents.send('launch-finished');
@@ -643,15 +837,27 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
             if (code !== 0 && code !== null) {
                 const logsText = jvmLogs.join('\n');
                 mainWindow.webContents.send('launch-error', `Le jeu a planté (Code de sortie: ${code}).\n\nDernières lignes de la console :\n${logsText}`);
+                appendToLogBuffer(`[FATAL] Le jeu a planté avec le code de sortie: ${code}`);
+            } else {
+                appendToLogBuffer(`[MCLC] Le jeu s'est arrêté normalement.`);
             }
         }
     });
 
     console.log("[FORGE] Lancement du moteur...");
+    appendToLogBuffer("[MCLC] Lancement final du moteur Minecraft...");
     await launcher.launch(opts);
     
   } catch (error) {
     isGameRunning = false;
+    setDiscordActivity('Dans le launcher', 'Prêt à naviguer');
+
+    if (consoleWindow && !consoleWindow.isDestroyed()) {
+      consoleWindow.webContents.send('game-status', 'crashed');
+    }
+
+    appendToLogBuffer(`[FATAL] Erreur critique de lancement: ${error.message}`);
+
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('game-status', false);
         console.error("[FATAL ERROR]", error);

@@ -5,7 +5,7 @@ import { X, Cpu, Globe, Monitor } from 'lucide-react';
 import CustomDropdown from './CustomDropdown';
 
 const SettingsModal = ({ onClose }) => {
-  const { ram, setRam, language, setLanguage, launchOnStartup, setLaunchOnStartup, backgroundMode, setBackgroundMode } = useSettingsStore();
+  const { ram, setRam, language, setLanguage, launchOnStartup, setLaunchOnStartup, backgroundMode, setBackgroundMode, showConsole, setShowConsole } = useSettingsStore();
   const t = translations[language] || translations['fr'];
 
   const langOptions = [
@@ -70,6 +70,11 @@ const SettingsModal = ({ onClose }) => {
               <div className="setting-row">
                 <div className="setting-label"><Monitor size={14} /> {t.bg_mode}</div>
                 <input type="checkbox" checked={backgroundMode} onChange={(e) => setBackgroundMode(e.target.checked)} className="setting-toggle" />
+              </div>
+
+              <div className="setting-row">
+                <div className="setting-label"><Monitor size={14} /> {t.show_console}</div>
+                <input type="checkbox" checked={showConsole} onChange={(e) => setShowConsole(e.target.checked)} className="setting-toggle" />
               </div>
             </div>
           </div>

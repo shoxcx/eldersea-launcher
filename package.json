@@ -1,7 +1,7 @@
 {
   "name": "eldersea",
   "private": true,
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "ElderSea Minecraft Launcher",
   "author": "ElderSea Team",
   "type": "module",
@@ -43,6 +43,7 @@
     }
   },
   "dependencies": {
+    "discord-rpc": "^4.0.1",
     "electron-updater": "^6.8.3",
     "firebase": "^12.12.1",
     "lucide-react": "^1.14.0",

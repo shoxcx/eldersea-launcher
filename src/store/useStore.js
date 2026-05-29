@@ -32,11 +32,13 @@ export const useSettingsStore = create(
       language: 'fr',
       launchOnStartup: false,
       backgroundMode: true,
+      showConsole: false,
       installPath: 'C:\\Users\\User\\AppData\\Roaming\\.eldersea',
       setRam: (ram) => set({ ram }),
       setLanguage: (language) => set({ language }),
       setLaunchOnStartup: (launchOnStartup) => set({ launchOnStartup }),
       setBackgroundMode: (backgroundMode) => set({ backgroundMode }),
+      setShowConsole: (showConsole) => set({ showConsole }),
       setInstallPath: (installPath) => set({ installPath }),
     }),
     { 
