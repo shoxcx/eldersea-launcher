@@ -353,7 +353,12 @@ function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
     console.log(`[DL] Start: ${url}`);
     const request = net.request({ url: url, redirect: 'follow' });
+    const timeout = setTimeout(() => {
+      request.abort();
+      reject(new Error("Timeout pendant le téléchargement"));
+    }, 45000);
     request.on('response', (response) => {
+      clearTimeout(timeout);
       if (response.statusCode !== 200) {
         console.error(`[DL ERROR] ${response.statusCode} for ${url}`);
         reject(new Error(`Status ${response.statusCode}`));
@@ -364,6 +369,7 @@ function downloadFile(url, dest) {
       response.on('end', () => { file.end(); resolve(); });
     });
     request.on('error', (err) => {
+        clearTimeout(timeout);
         console.error(`[DL FATAL] ${err.message}`);
         reject(err);
     });
@@ -394,12 +400,17 @@ async function setupFabric(gameRoot, mcVersion, loaderVersion) {
 }
 
 async function syncHTTP(gameRoot) {
-  const baseUrl = "http://eldersea.tekao.fr/launcher/";
+  const baseUrl = "https://eldersea.tekao.fr/launcher/";
   
   async function fetchList(dirUrl) {
       return new Promise((resolve, reject) => {
           const req = net.request({ url: dirUrl, redirect: 'follow' });
+          const timeout = setTimeout(() => {
+              req.abort();
+              reject(new Error("Timeout pendant la récupération de la liste des fichiers"));
+          }, 10000);
           req.on('response', (res) => {
+              clearTimeout(timeout);
               if (res.statusCode !== 200) {
                   return resolve(""); 
               }
@@ -407,7 +418,10 @@ async function syncHTTP(gameRoot) {
               res.on('data', chunk => data += chunk.toString());
               res.on('end', () => resolve(data));
           });
-          req.on('error', reject);
+          req.on('error', (err) => {
+              clearTimeout(timeout);
+              reject(err);
+          });
           req.end();
       });
   }
@@ -416,7 +430,12 @@ async function syncHTTP(gameRoot) {
       if (!fs.existsSync(dest)) return true;
       return new Promise((resolve) => {
           const req = net.request({ method: 'HEAD', url: url, redirect: 'follow' });
+          const timeout = setTimeout(() => {
+              req.abort();
+              resolve(true);
+          }, 5000);
           req.on('response', (res) => {
+              clearTimeout(timeout);
               if (res.statusCode === 200) {
                   const remoteSize = parseInt(res.headers['content-length'] || '0', 10);
                   const localSize = fs.statSync(dest).size;
@@ -425,7 +444,10 @@ async function syncHTTP(gameRoot) {
                   resolve(true);
               }
           });
-          req.on('error', () => resolve(true));
+          req.on('error', () => {
+              clearTimeout(timeout);
+              resolve(true);
+          });
           req.end();
       });
   }
@@ -690,7 +712,13 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
       mainWindow.webContents.send('launch-progress', { type: 'Chargement Forge...', task: 20, total: 100 });
     }
     appendToLogBuffer("[MCLC] Chargement de Forge...");
-    // await syncHTTP(GAME_ROOT);
+    try {
+      await syncHTTP(GAME_ROOT);
+    } catch (err) {
+      console.warn("[SYNC WARNING] Échec de la synchronisation avec le serveur, utilisation des fichiers existants:", err.message);
+      appendToLogBuffer(`[WARN] Échec de la synchronisation : ${err.message}`);
+      appendToLogBuffer("[WARN] Démarrage du jeu en mode hors-ligne avec les fichiers existants...");
+    }
     
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('launch-progress', { type: 'Décollage...', task: 80, total: 100 });
