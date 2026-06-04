@@ -242,7 +242,7 @@
   <!-- Custom Title Bar -->
   <div class="title-bar">
     <div class="title-brand">
-      <img src="../public/logoapp.png" alt="Logo">
+      <img id="logo-img" src="../public/logoapp.png" alt="Logo">
       <span>ElderSea Console</span>
     </div>
     <div class="window-controls">
@@ -272,6 +272,20 @@
 
   <script>
     const { ipcRenderer } = require('electron');
+    const fs = require('fs');
+    const path = require('path');
+
+    // Résolution dynamique du logo de la console
+    const logoImg = document.getElementById('logo-img');
+    if (logoImg) {
+      const devLogo = path.join(__dirname, '../public/logoapp.png');
+      const prodLogo = path.join(__dirname, '../dist/logoapp.png');
+      if (fs.existsSync(prodLogo)) {
+        logoImg.src = prodLogo;
+      } else {
+        logoImg.src = devLogo;
+      }
+    }
 
     const logsBox = document.getElementById('logs-box');
     const chkAutoscroll = document.getElementById('chk-autoscroll');

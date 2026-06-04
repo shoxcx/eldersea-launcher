@@ -399,6 +399,22 @@ async function setupFabric(gameRoot, mcVersion, loaderVersion) {
   return versionId;
 }
 
+async function limitConcurrency(tasks, limit) {
+  const results = [];
+  const executing = new Set();
+  for (const task of tasks) {
+    const p = Promise.resolve().then(() => task());
+    results.push(p);
+    executing.add(p);
+    const clean = () => executing.delete(p);
+    p.then(clean, clean);
+    if (executing.size >= limit) {
+      await Promise.race(executing);
+    }
+  }
+  return Promise.all(results);
+}
+
 async function syncHTTP(gameRoot) {
   const baseUrl = "https://eldersea.tekao.fr/launcher/";
   
@@ -432,8 +448,9 @@ async function syncHTTP(gameRoot) {
           const req = net.request({ method: 'HEAD', url: url, redirect: 'follow' });
           const timeout = setTimeout(() => {
               req.abort();
-              resolve(true);
-          }, 5000);
+              console.warn(`[SYNC] HEAD timeout pour ${url}, utilisation du fichier local.`);
+              resolve(false);
+          }, 4000);
           req.on('response', (res) => {
               clearTimeout(timeout);
               if (res.statusCode === 200) {
@@ -441,20 +458,24 @@ async function syncHTTP(gameRoot) {
                   const localSize = fs.statSync(dest).size;
                   resolve(remoteSize > 0 && remoteSize !== localSize);
               } else {
-                  resolve(true);
+                  console.warn(`[SYNC] HEAD statut ${res.statusCode} pour ${url}, utilisation du fichier local.`);
+                  resolve(false);
               }
           });
-          req.on('error', () => {
+          req.on('error', (err) => {
               clearTimeout(timeout);
-              resolve(true);
+              console.warn(`[SYNC] HEAD erreur pour ${url}: ${err.message}, utilisation du fichier local.`);
+              resolve(false);
           });
           req.end();
       });
   }
 
-  async function syncDir(remoteDir, localDir) {
-      if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
-      
+  const filesToSync = [];
+  const dirsToCreate = new Set();
+
+  async function collectFiles(remoteDir, localDir) {
+      dirsToCreate.add(localDir);
       const html = await fetchList(remoteDir);
       if (!html) return;
       
@@ -469,20 +490,27 @@ async function syncHTTP(gameRoot) {
 
       const isModsDir = localDir.endsWith('mods') || localDir.endsWith('mods\\') || localDir.endsWith('mods/');
       
-      if (isModsDir) {
+      if (isModsDir && fs.existsSync(localDir)) {
           const localFiles = fs.readdirSync(localDir);
           for (const localFile of localFiles) {
               if (localFile.endsWith('.jar')) {
-                  if (!items.some(i => decodeURIComponent(i.endsWith('/') ? i.slice(0, -1) : i) === localFile)) {
+                  const serverHasMod = items.some(i => {
+                      const decoded = decodeURIComponent(i.endsWith('/') ? i.slice(0, -1) : i);
+                      return decoded === localFile;
+                  });
+                  if (!serverHasMod) {
                       try {
                           fs.unlinkSync(path.join(localDir, localFile)); 
-                          console.log(`[SYNC] Deleting local mod (not on server): ${localFile}`); 
-                      } catch (e) {}
+                          console.log(`[SYNC] Suppression du mod local (non présent sur le serveur): ${localFile}`); 
+                      } catch (e) {
+                          console.warn(`[SYNC] Échec de la suppression du mod local ${localFile}:`, e);
+                      }
                   }
               }
           }
       }
 
+      const subDirTasks = [];
       for (const item of items) {
           const itemUrl = remoteDir + item;
           const decodedName = decodeURIComponent(item.endsWith('/') ? item.slice(0, -1) : item);
@@ -491,19 +519,51 @@ async function syncHTTP(gameRoot) {
           if (decodedName.toLowerCase() === '.htaccess') continue;
 
           if (item.endsWith('/')) {
-              await syncDir(itemUrl, localFile);
+              subDirTasks.push(collectFiles(itemUrl, localFile));
           } else {
-              const shouldDownload = await checkNeedsDownload(itemUrl, localFile);
-              if (shouldDownload) {
-                  console.log(`[SYNC] DL: ${itemUrl}`);
-                  await downloadFile(itemUrl, localFile);
-              }
+              filesToSync.push({
+                  url: itemUrl,
+                  dest: localFile,
+                  isLibrary: localFile.includes('libraries') || localFile.includes('versions')
+              });
           }
+      }
+      if (subDirTasks.length > 0) {
+          await Promise.all(subDirTasks);
       }
   }
 
   try {
-      await syncDir(baseUrl, gameRoot);
+      console.log("[SYNC] Début de la collecte des fichiers...");
+      await collectFiles(baseUrl, gameRoot);
+      console.log(`[SYNC] Collecte terminée. ${filesToSync.length} fichiers trouvés.`);
+
+      // Création des répertoires nécessaires
+      for (const dir of dirsToCreate) {
+          if (!fs.existsSync(dir)) {
+              fs.mkdirSync(dir, { recursive: true });
+          }
+      }
+
+      // Création des tâches de vérification et de téléchargement
+      const tasks = filesToSync.map(file => async () => {
+          let needsDl = false;
+          if (!fs.existsSync(file.dest)) {
+              needsDl = true;
+          } else if (!file.isLibrary) {
+              needsDl = await checkNeedsDownload(file.url, file.dest);
+          }
+
+          if (needsDl) {
+              console.log(`[SYNC] Téléchargement: ${file.url}`);
+              await downloadFile(file.url, file.dest);
+          }
+      });
+
+      // Exécuter les tâches en parallèle avec une concurrence de 10
+      await limitConcurrency(tasks, 10);
+      console.log("[SYNC] Synchronisation terminée avec succès.");
+
   } catch (err) {
       console.error("[HTTP SYNC ERROR]", err.message);
       if (mainWindow && !mainWindow.isDestroyed()) {
