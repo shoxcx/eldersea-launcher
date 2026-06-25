@@ -1,9 +1,9 @@
 {
   "name": "eldersea",
   "private": true,
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "ElderSea Minecraft Launcher",
-  "author": "ElderSea Team",
+  "author": "Flores Studio Team",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {

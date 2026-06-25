@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useSettingsStore } from '../store/useStore';
 import { translations } from '../translations';
-import { Camera, RefreshCw, FolderOpen, Maximize2, X, ExternalLink, Trash2 } from 'lucide-react';
+import { Camera, RefreshCw, FolderOpen, ExternalLink, Trash2, UploadCloud } from 'lucide-react';
 
-const ScreenshotsView = ({ setFullscreen }) => {
+
+const ScreenshotsView = ({ setFullscreen, setActiveTab }) => {
   const { language } = useSettingsStore();
   const t = translations[language] || translations['fr'];
   const [screenshots, setScreenshots] = useState([]);
@@ -37,11 +38,9 @@ const ScreenshotsView = ({ setFullscreen }) => {
 
   const deleteImg = async (e, fullPath) => {
     e.stopPropagation();
-    // Use a simpler confirmation or direct action if blocked
     try {
       const success = await window.ipcRenderer.invoke('delete-screenshot', fullPath);
       if (success) {
-        // Optimistic UI update
         setScreenshots(prev => prev.filter(s => s.fullPath !== fullPath));
       } else {
         alert("Impossible de supprimer le fichier.");
@@ -60,9 +59,27 @@ const ScreenshotsView = ({ setFullscreen }) => {
             <RefreshCw size={18} className={loading ? 'spin' : ''} />
           </button>
         </div>
-        <button className="btn-secondary cinzel" onClick={openFolder} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 20px', fontSize: '12px' }}>
-          <FolderOpen size={16} /> {t.open_folder}
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button 
+            className="btn-secondary cinzel" 
+            onClick={() => setActiveTab('image-hosting')} 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '10px', 
+              padding: '8px 20px', 
+              fontSize: '12px',
+              borderColor: 'rgba(168,85,247,0.3)',
+              background: 'rgba(168,85,247,0.08)',
+              color: '#c084fc'
+            }}
+          >
+            <UploadCloud size={16} /> {t.host_images}
+          </button>
+          <button className="btn-secondary cinzel" onClick={openFolder} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 20px', fontSize: '12px' }}>
+            <FolderOpen size={16} /> {t.open_folder}
+          </button>
+        </div>
       </header>
 
       {loading && screenshots.length === 0 ? (
@@ -108,6 +125,8 @@ const ScreenshotsView = ({ setFullscreen }) => {
         </div>
       )}
 
+
+
       <style dangerouslySetInnerHTML={{ __html: `
         .action-pill { background: rgba(15,22,40,0.85); border: 1px solid var(--border); border-radius: 6px; padding: 8px; color: var(--crystal); cursor: pointer; transition: all 0.2s; backdrop-filter: blur(5px); }
         .action-pill:hover { background: var(--purple); color: white; border-color: var(--purple-light); transform: scale(1.1); }
@@ -118,6 +137,23 @@ const ScreenshotsView = ({ setFullscreen }) => {
         .btn-secondary:hover { background: rgba(212,175,55,0.2); border-color: var(--purple-light); }
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .drag-drop-area { transition: all 0.25s ease-in-out; }
+        .drag-drop-area:hover {
+          border-color: #c084fc !important;
+          background: rgba(168,85,247,0.04) !important;
+          box-shadow: 0 0 20px rgba(168,85,247,0.1);
+        }
+        .copy-pill-btn:hover {
+          background: rgba(16,185,129,0.25) !important;
+          transform: translateY(-1px);
+        }
+        .close-pill-btn:hover {
+          background: rgba(239,68,68,0.15) !important;
+          border-color: #ef4444 !important;
+        }
+        .hover-crystal { transition: color 0.2s; }
+        .hover-crystal:hover { color: var(--crystal) !important; }
       `}} />
     </div>
   );

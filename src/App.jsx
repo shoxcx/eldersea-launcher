@@ -1,24 +1,154 @@
 import React, { useState, useEffect } from 'react';
-import { X, Lightbulb, RefreshCw, AlertTriangle, CheckCircle, Download, Package, Zap } from 'lucide-react';
+import { X, Lightbulb, RefreshCw, AlertTriangle, CheckCircle, Download, Package, Zap, Shield, Compass, Clock, Calendar, Users, User } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import HomeView from './views/HomeView';
 import ModsView from './views/ModsView';
 import ScreenshotsView from './views/ScreenshotsView';
+import ImageHostingView from './views/ImageHostingView';
 import ShopView from './views/ShopView';
 import ProfileView from './views/ProfileView';
+import FriendsView from './views/FriendsView';
 import AuthModal from './components/AuthModal';
 import SettingsModal from './components/SettingsModal';
 import { useAuthStore, useSettingsStore } from './store/useStore';
+import { translations } from './translations';
 
 function App() {
-  const { isLoggedIn } = useAuthStore();
-  const { launchOnStartup, backgroundMode, showConsole } = useSettingsStore();
+  const { isLoggedIn, user } = useAuthStore();
+  const { launchOnStartup, backgroundMode, showConsole, language } = useSettingsStore();
   const [activeTab, setActiveTab] = useState('home');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState(null);
+  const [activeChatFriend, setActiveChatFriend] = useState(null);
+  
+  const [inspectedUser, setInspectedUser] = useState(null);
+  const [inspectedUserDetails, setInspectedUserDetails] = useState(null);
+  const [isInspectedLoading, setIsInspectedLoading] = useState(false);
+
+  const getCrewForUser = (pseudo) => {
+    if (!pseudo) return 'Aucun';
+    const name = pseudo.toLowerCase();
+    if (name === 'zewolf929') return 'Chapeau de Paille';
+    if (name === 'shox') return 'Légende de la Mer';
+    if (name === 'pierre') return 'Garde Impériale';
+    if (name === 'lou') return 'Juge de l\'Ombre';
+    if (name === 'magernos') return 'Seigneurs de Guerre';
+    if (name === 'sky_cookies') return 'Cookies Volants';
+    if (name === 'z_wolf929') return 'Matelots d\'Élite';
+    if (name === 'admin' || name === 'eldersea') return 'Légende';
+    return 'Aucun';
+  };
+
+  const getStatusColor = (lastActive) => {
+    if (!lastActive) return { bg: '#6b7280', glow: 'none' };
+    const diff = (Date.now() - new Date(lastActive).getTime()) / 1000 / 60;
+    if (diff <= 3) {
+      return { bg: '#10b981', glow: '0 0 6px #10b981' }; // green
+    } else {
+      return { bg: '#6b7280', glow: 'none' }; // grey
+    }
+  };
+
+  const formatLastActive = (dateStr, lang) => {
+    const t = translations[lang] || translations['fr'];
+    if (!dateStr) return t.offline;
+    const diff = (Date.now() - new Date(dateStr).getTime()) / 1000 / 60;
+    if (diff <= 3) return t.online_launcher;
+    
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleString(lang === 'en' ? 'en-US' : 'fr-FR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return t.offline;
+    }
+  };
+
+  // Fetch inspected user details
+  useEffect(() => {
+    if (!inspectedUser) {
+      setInspectedUserDetails(null);
+      return;
+    }
+    
+    let isMounted = true;
+    const fetchInspectedUser = async () => {
+      setIsInspectedLoading(true);
+      try {
+        const res = await fetch('https://eldersea.tekao.fr/api/api/users');
+        if (res.ok && isMounted) {
+          const users = await res.json();
+          const found = users.find(u => u.pseudo && u.pseudo.toLowerCase() === inspectedUser.toLowerCase());
+          if (found) {
+            setInspectedUserDetails(found);
+          } else {
+            setInspectedUserDetails({
+              pseudo: inspectedUser,
+              rank: 'Joueur',
+              isOnline: false,
+              lastActive: null,
+              createdAt: null
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching inspected user:", err);
+        if (isMounted) {
+          setInspectedUserDetails({
+            pseudo: inspectedUser,
+            rank: 'Joueur',
+            isOnline: false,
+            lastActive: null,
+            createdAt: null
+          });
+        }
+      } finally {
+        if (isMounted) {
+          setIsInspectedLoading(false);
+        }
+      }
+    };
+
+    fetchInspectedUser();
+  }, [inspectedUser]);
+
+  // Periodic status ping for the logged-in user
+  useEffect(() => {
+    if (!isLoggedIn || !user) return;
+    
+    const pingStatus = async () => {
+      const pseudo = typeof user === 'string' ? user : user?.pseudo;
+      if (!pseudo) return;
+      try {
+        const res = await fetch('https://eldersea.tekao.fr/api/api/users');
+        if (res.ok) {
+          const users = await res.json();
+          const found = users.find(u => u.pseudo && u.pseudo.toLowerCase() === pseudo.toLowerCase());
+          if (found) {
+            await fetch(`https://eldersea.tekao.fr/api/api/users/${found.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ lastActive: new Date().toISOString() })
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to ping status:", err);
+      }
+    };
+
+    pingStatus();
+    const interval = setInterval(pingStatus, 30000); // every 30 seconds
+    return () => clearInterval(interval);
+  }, [isLoggedIn, user]);
   
   // Download progress state
   const [downloadInfo, setDownloadInfo] = useState(null);
@@ -66,8 +196,13 @@ function App() {
   // Handle launch progress from Electron
   useEffect(() => {
     if (window.ipcRenderer) {
-      const handleProgress = (event, data) => {
+      let lastUpdate = 0;
+      let updateTimeout = null;
+      let pendingData = null;
+
+      const updateStateNow = (data) => {
         const now = Date.now();
+        lastUpdate = now;
         const tracker = downloadTracker.current;
         
         let progress = 0;
@@ -130,6 +265,37 @@ function App() {
         }
       };
 
+      const handleProgress = (event, data) => {
+        const now = Date.now();
+        const isCritical = 
+          !data.task || 
+          data.task === data.total || 
+          data.type === 'finished' || 
+          data.type === 'Décollage...' ||
+          data.type === 'Extraction de Java...' ||
+          data.type === 'Chargement Forge...';
+
+        if (isCritical || (now - lastUpdate >= 100)) {
+          if (updateTimeout) {
+            clearTimeout(updateTimeout);
+            updateTimeout = null;
+          }
+          pendingData = null;
+          updateStateNow(data);
+        } else {
+          pendingData = data;
+          if (!updateTimeout) {
+            updateTimeout = setTimeout(() => {
+              if (pendingData) {
+                updateStateNow(pendingData);
+                pendingData = null;
+              }
+              updateTimeout = null;
+            }, 100);
+          }
+        }
+      };
+
       const handleFinished = () => {
         setDownloadInfo({ type: 'Lancement réussi !', progress: 100 });
         setTimeout(() => setDownloadInfo(null), 3000);
@@ -151,6 +317,7 @@ function App() {
       window.ipcRenderer.on('update-status', handleUpdateStatus);
 
       return () => {
+        if (updateTimeout) clearTimeout(updateTimeout);
         window.ipcRenderer.removeAllListeners('launch-progress');
         window.ipcRenderer.removeAllListeners('launch-finished');
         window.ipcRenderer.removeAllListeners('launch-error');
@@ -215,6 +382,8 @@ function App() {
         onOpenAuth={() => setIsAuthModalOpen(true)}
         isProfileOpen={isProfileOpen}
         onToggleProfile={() => setIsProfileOpen(!isProfileOpen)}
+        setActiveChatFriend={setActiveChatFriend}
+        onInspectUser={setInspectedUser}
       />
       
       <main className="main-content">
@@ -234,9 +403,18 @@ function App() {
             />
           )}
           {activeTab === 'mods' && <ModsView />}
-          {activeTab === 'screenshots' && <ScreenshotsView setFullscreen={setFullscreenImage} />}
+          {activeTab === 'screenshots' && <ScreenshotsView setFullscreen={setFullscreenImage} setActiveTab={setActiveTab} />}
+          {activeTab === 'image-hosting' && <ImageHostingView setFullscreen={setFullscreenImage} setActiveTab={setActiveTab} />}
           {activeTab === 'shop' && <ShopView />}
           {activeTab === 'profile' && <ProfileView />}
+          {activeTab === 'friends' && (
+            <FriendsView 
+              setFullscreen={setFullscreenImage} 
+              activeChatFriend={activeChatFriend}
+              setActiveChatFriend={setActiveChatFriend}
+              onInspectUser={setInspectedUser}
+            />
+          )}
         </div>
       </main>
 
@@ -492,6 +670,128 @@ function App() {
                     {selectedNews.tip}
                   </div>
                   <Lightbulb size={120} color="var(--purple)" style={{ position: 'absolute', right: '-20px', bottom: '-40px', opacity: 0.05 }} />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 3D SKIN INSPECTION MODAL ── */}
+      {inspectedUser && (
+        <div 
+          className="modal-overlay fade-in" 
+          style={{
+            position: 'fixed', inset: 0, zIndex: 4000, background: 'rgba(0,0,0,0.85)',
+            backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}
+          onClick={() => setInspectedUser(null)}
+        >
+          <div 
+            className="glass-panel" 
+            style={{
+              width: '580px', background: 'var(--bg-card)', border: '1px solid var(--border-bright)',
+              borderRadius: '20px', padding: '30px', position: 'relative', overflow: 'hidden',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.8)', display: 'flex', gap: '25px',
+              alignItems: 'stretch', animation: 'fadeIn 0.2s ease'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top border glow line */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, var(--purple), transparent)' }} />
+            
+            {/* Close button */}
+            <button 
+              onClick={() => setInspectedUser(null)} 
+              style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', zIndex: 10 }}
+            >
+              <X size={20} />
+            </button>
+
+            {/* Left Column: 3D Render iframe */}
+            <div style={{
+              width: '220px', display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center',
+              background: 'rgba(0,0,0,0.3)', borderRadius: '12px', border: '1px solid var(--border)',
+              padding: '15px', position: 'relative'
+            }}>
+              <div style={{ width: '100%', height: '280px', position: 'relative', overflow: 'hidden' }}>
+                <iframe
+                  src={`https://kurojs.github.io/McView3D/embed.html?skin=${inspectedUser}&width=190&height=260`}
+                  width="100%"
+                  height="100%"
+                  scrolling="no"
+                  style={{ border: 'none', overflow: 'hidden', display: 'block' }}
+                  title="3D Skin Viewer"
+                />
+              </div>
+              <div style={{ fontSize: '9px', color: 'var(--text-dim)', textAlign: 'center', fontStyle: 'italic' }}>
+                Faites glisser pour faire tourner le skin
+              </div>
+            </div>
+
+            {/* Right Column: Player details */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                <h2 className="cinzel" style={{ fontSize: '20px', color: 'var(--crystal)', margin: 0, letterSpacing: '2px', fontWeight: 800 }}>
+                  {inspectedUser.toUpperCase()}
+                </h2>
+                {inspectedUserDetails && (
+                  <span 
+                    style={{
+                      width: '8px', height: '8px', borderRadius: '50%',
+                      background: getStatusColor(inspectedUserDetails.lastActive).bg,
+                      boxShadow: getStatusColor(inspectedUserDetails.lastActive).glow
+                    }} 
+                  />
+                )}
+              </div>
+
+              {inspectedUserDetails ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '10px' }}>
+                  {/* Rank */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: 'rgba(212,175,55,0.08)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--purple)' }}>
+                      <Shield size={16} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '1px' }}>Grade</div>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--crystal)' }}>{inspectedUserDetails.rank}</div>
+                    </div>
+                  </div>
+
+
+
+                  {/* Last Connection */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: 'rgba(212,175,55,0.08)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--purple)' }}>
+                      <Clock size={16} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '1px' }}>Dernière connexion</div>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {formatLastActive(inspectedUserDetails.lastActive, language)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Member since / Registered at */}
+                  {inspectedUserDetails.createdAt && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: 'rgba(212,175,55,0.08)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--purple)' }}>
+                        <Calendar size={16} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '1px' }}>Membre depuis</div>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {new Date(inspectedUserDetails.createdAt).toLocaleDateString(language === 'en' ? 'en-US' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ padding: '20px 0', color: 'var(--text-muted)', fontSize: '12px' }}>
+                  Chargement des détails...
                 </div>
               )}
             </div>

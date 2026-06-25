@@ -74,7 +74,7 @@ export const firebaseService = {
       const userRes = await fetch(`${API_URL}/api/users`);
       if (!userRes.ok) return false;
       const allUsers = await userRes.json();
-      const user = allUsers.find(u => u.pseudo.toLowerCase() === pseudo.toLowerCase());
+      const user = allUsers.find(u => u.pseudo && u.pseudo.toLowerCase() === pseudo.toLowerCase());
       if (!user) return false;
 
       // 2. Hash new password

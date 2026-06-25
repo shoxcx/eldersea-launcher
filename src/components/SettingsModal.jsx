@@ -1,12 +1,56 @@
 import React from 'react';
 import { useSettingsStore } from '../store/useStore';
 import { translations } from '../translations';
-import { X, Cpu, Globe, Monitor } from 'lucide-react';
+import { X, Cpu, Globe, Monitor, ShieldCheck } from 'lucide-react';
 import CustomDropdown from './CustomDropdown';
 
 const SettingsModal = ({ onClose }) => {
   const { ram, setRam, language, setLanguage, launchOnStartup, setLaunchOnStartup, backgroundMode, setBackgroundMode, showConsole, setShowConsole } = useSettingsStore();
   const t = translations[language] || translations['fr'];
+
+  const [verifying, setVerifying] = React.useState(false);
+  const [progress, setProgress] = React.useState(0);
+  const [statusText, setStatusText] = React.useState('');
+
+  React.useEffect(() => {
+    if (window.ipcRenderer) {
+      const handleProgress = (event, data) => {
+        const pct = Math.round((data.completed / data.total) * 100);
+        setProgress(pct);
+        setStatusText(prev => {
+          const successMsg = t.integrity_success || 'Tous les fichiers sont valides !';
+          const errorPrefix = t.integrity_error || 'Échec de la vérification : ';
+          if (prev === successMsg || prev.startsWith(errorPrefix)) {
+            return prev;
+          }
+          return `${t.integrity_verifying || 'Vérification en cours...'} (${pct}%)`;
+        });
+      };
+
+      window.ipcRenderer.on('verify-progress', handleProgress);
+      return () => {
+        window.ipcRenderer.removeListener('verify-progress', handleProgress);
+      };
+    }
+  }, [t.integrity_verifying]);
+
+  const handleVerifyIntegrity = async () => {
+    if (verifying) return;
+    setVerifying(true);
+    setProgress(0);
+    setStatusText(t.integrity_init || 'Initialisation...');
+    try {
+      const result = await window.ipcRenderer.invoke('verify-files');
+      if (result.success) {
+        setStatusText(t.integrity_success || 'Tous les fichiers sont valides !');
+      } else {
+        setStatusText(`${t.integrity_error || 'Échec : '}${result.error}`);
+      }
+    } catch (err) {
+      setStatusText('Erreur de communication avec le launcher.');
+    }
+    setVerifying(false);
+  };
 
   const langOptions = [
     { value: 'fr', label: 'Français' },
@@ -43,7 +87,7 @@ const SettingsModal = ({ onClose }) => {
             {t.settings.toUpperCase()}
           </h2>
 
-          <div style={{ flex: 1, overflowY: 'visible', paddingRight: '10px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px', paddingBottom: '20px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
               <div className="setting-group">
                 <label className="setting-label"><Globe size={14} /> {t.language}</label>
@@ -75,6 +119,45 @@ const SettingsModal = ({ onClose }) => {
               <div className="setting-row">
                 <div className="setting-label"><Monitor size={14} /> {t.show_console}</div>
                 <input type="checkbox" checked={showConsole} onChange={(e) => setShowConsole(e.target.checked)} className="setting-toggle" />
+              </div>
+
+              <div className="setting-group" style={{ borderTop: '1px solid var(--border)', paddingTop: '20px', marginTop: '10px' }}>
+                <label className="setting-label"><ShieldCheck size={14} /> {t.integrity_label}</label>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                  {t.integrity_desc}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                    <button 
+                      onClick={handleVerifyIntegrity} 
+                      className="btn-secondary" 
+                      disabled={verifying}
+                      style={{ 
+                        padding: '8px 16px', 
+                        fontSize: '11px', 
+                        cursor: verifying ? 'not-allowed' : 'pointer',
+                        opacity: verifying ? 0.6 : 1,
+                        background: 'rgba(212,175,55,0.08)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px',
+                        color: 'var(--crystal)',
+                        fontWeight: '600',
+                        letterSpacing: '1px',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {verifying ? 'VÉRIFICATION...' : t.integrity_btn}
+                    </button>
+                    <span style={{ fontSize: '11px', color: verifying ? 'var(--purple-light)' : 'var(--text-dim)', fontWeight: 600 }}>
+                      {statusText}
+                    </span>
+                  </div>
+                  {verifying && (
+                    <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ width: `${progress}%`, height: '100%', background: 'var(--purple)', transition: 'width 0.2s ease' }} />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

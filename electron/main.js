@@ -296,12 +296,60 @@ ipcMain.on('set-background-mode', (event, enable) => {
 });
 
 ipcMain.on('open-folder', (event, folderName) => {
-  if (!fs.existsSync(GAME_ROOT)) fs.mkdirSync(GAME_ROOT, { recursive: true });
-  shell.openPath(GAME_ROOT);
+  let targetPath = GAME_ROOT;
+  if (folderName) {
+    targetPath = path.join(GAME_ROOT, folderName);
+  }
+  if (!fs.existsSync(targetPath)) fs.mkdirSync(targetPath, { recursive: true });
+  shell.openPath(targetPath);
+});
+
+ipcMain.on('show-item', (event, fullPath) => {
+  if (fs.existsSync(fullPath)) {
+    shell.showItemInFolder(fullPath);
+  }
 });
 
 ipcMain.on('open-external-url', (event, url) => {
   shell.openExternal(url);
+});
+
+ipcMain.handle('get-server-status', async () => {
+  return new Promise((resolve) => {
+    const req = https.get('https://api.mcstatus.io/v2/status/java/eldersea.tekao.fr', (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve({
+            online: json.online ?? false,
+            players: json.players ? (json.players.online ?? 0) : 0,
+            maxPlayers: json.players ? (json.players.max ?? 0) : 0
+          });
+        } catch (e) {
+          resolve({ online: false, players: 0, maxPlayers: 0 });
+        }
+      });
+    });
+    req.on('error', () => {
+      resolve({ online: false, players: 0, maxPlayers: 0 });
+    });
+    req.setTimeout(5000, () => {
+      req.destroy();
+      resolve({ online: false, players: 0, maxPlayers: 0 });
+    });
+  });
+});
+
+ipcMain.handle('verify-files', async () => {
+  try {
+    await syncHTTP(GAME_ROOT, true);
+    return { success: true };
+  } catch (err) {
+    console.error('[INTEGRITY ERROR]', err);
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('check-mojang', async (event, pseudo) => {
@@ -310,6 +358,102 @@ ipcMain.handle('check-mojang', async (event, pseudo) => {
       resolve(res.statusCode === 200);
     }).on('error', () => resolve(false));
   });
+});
+
+ipcMain.handle('upload-image-to-web', async (event, { base64Data, filename, mimeType }) => {
+  const boundary = '----WebKitFormBoundary' + crypto.randomBytes(16).toString('hex');
+  const buffer = Buffer.from(base64Data, 'base64');
+
+  let postData = [];
+  postData.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="reqtype"\r\n\r\nfileupload\r\n`));
+  postData.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="fileToUpload"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`));
+  postData.push(buffer);
+  postData.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+
+  const finalBuffer = Buffer.concat(postData);
+
+  const uploadToEldersea = () => {
+    return new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'eldersea.tekao.fr',
+        port: 443,
+        path: '/api/api/upload',
+        method: 'POST',
+        headers: {
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': finalBuffer.length,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200 || res.statusCode === 201) {
+            try {
+              const json = JSON.parse(body);
+              if (json.url) resolve(json.url);
+              else resolve(body.trim());
+            } catch (e) {
+              resolve(body.trim());
+            }
+          } else {
+            reject(new Error(`Status ${res.statusCode}`));
+          }
+        });
+      });
+
+      req.on('error', (e) => reject(e));
+      req.write(finalBuffer);
+      req.end();
+    });
+  };
+
+  const uploadToCatbox = () => {
+    return new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'catbox.moe',
+        port: 443,
+        path: '/user/api.php',
+        method: 'POST',
+        headers: {
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': finalBuffer.length,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200 && body.startsWith('http')) {
+            resolve(body.trim());
+          } else {
+            reject(new Error(`Status ${res.statusCode}: ${body}`));
+          }
+        });
+      });
+
+      req.on('error', (e) => reject(e));
+      req.write(finalBuffer);
+      req.end();
+    });
+  };
+
+  try {
+    const url = await uploadToEldersea();
+    return { success: true, url };
+  } catch (err) {
+    try {
+      const url = await uploadToCatbox();
+      return { success: true, url };
+    } catch (catboxErr) {
+      console.error('[UPLOAD ERROR]', catboxErr);
+      return { success: false, error: catboxErr.message };
+    }
+  }
 });
 
 ipcMain.handle('get-mods', async () => {
@@ -415,7 +559,7 @@ async function limitConcurrency(tasks, limit) {
   return Promise.all(results);
 }
 
-async function syncHTTP(gameRoot) {
+async function syncHTTP(gameRoot, isVerificationOnly = false) {
   const baseUrl = "https://eldersea.tekao.fr/launcher/";
   
   async function fetchList(dirUrl) {
@@ -551,9 +695,16 @@ async function syncHTTP(gameRoot) {
       const sendSyncProgress = (filename) => {
           completedTasks++;
           if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('launch-progress', {
-                  type: 'Vérification & Téléchargement...',
-                  task: completedTasks,
+              if (!isVerificationOnly) {
+                  mainWindow.webContents.send('launch-progress', {
+                      type: 'Vérification & Téléchargement...',
+                      task: completedTasks,
+                      total: totalTasks,
+                      filename: filename
+                  });
+              }
+              mainWindow.webContents.send('verify-progress', {
+                  completed: completedTasks,
                   total: totalTasks,
                   filename: filename
               });
@@ -587,7 +738,9 @@ async function syncHTTP(gameRoot) {
   } catch (err) {
       console.error("[HTTP SYNC ERROR]", err.message);
       if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('launch-error', "Erreur de connexion au serveur de fichiers (HTTP) : " + err.message);
+          if (!isVerificationOnly) {
+              mainWindow.webContents.send('launch-error', "Erreur de connexion au serveur de fichiers (HTTP) : " + err.message);
+          }
       }
       throw err;
   }
@@ -1076,3 +1229,151 @@ Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue
     console.error('[ICON ERROR] Failed to write icon script:', err);
   }
 }
+
+// ── Friends & Chat System ──
+const FRIENDS_DB_PATH = path.join(GAME_ROOT, 'friends_database.json');
+
+function getFriendsData() {
+  try {
+    if (!fs.existsSync(FRIENDS_DB_PATH)) {
+      const defaultState = { requests: [], friends: [], messages: [] };
+      fs.writeFileSync(FRIENDS_DB_PATH, JSON.stringify(defaultState, null, 2), 'utf8');
+      return defaultState;
+    }
+    const dataText = fs.readFileSync(FRIENDS_DB_PATH, 'utf8');
+    return JSON.parse(dataText);
+  } catch (e) {
+    console.error('[FRIENDS DB READ ERROR]', e);
+    return { requests: [], friends: [], messages: [] };
+  }
+}
+
+function saveFriendsData(data) {
+  try {
+    const parentDir = path.dirname(FRIENDS_DB_PATH);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+    fs.writeFileSync(FRIENDS_DB_PATH, JSON.stringify(data, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error('[FRIENDS DB WRITE ERROR]', e);
+    return false;
+  }
+}
+
+ipcMain.handle('friends-get-data', async () => {
+  return getFriendsData();
+});
+
+ipcMain.handle('friends-action', async (event, { action, fromUser, toUser }) => {
+  const db = getFriendsData();
+  const fromL = fromUser.toLowerCase();
+  const toL = toUser.toLowerCase();
+
+  if (action === 'send-request') {
+    // Check if they are already friends
+    const isFriend = db.friends.some(f => 
+      (f.user1.toLowerCase() === fromL && f.user2.toLowerCase() === toL) ||
+      (f.user1.toLowerCase() === toL && f.user2.toLowerCase() === fromL)
+    );
+    if (isFriend) return db;
+
+    // Check if toUser already requested fromUser (mutual add)
+    const reverseReqIndex = db.requests.findIndex(r => 
+      r.from.toLowerCase() === toL && r.to.toLowerCase() === fromL
+    );
+
+    if (reverseReqIndex !== -1) {
+      // Remove that request
+      db.requests.splice(reverseReqIndex, 1);
+      // Create friendship
+      db.friends.push({
+        user1: fromUser,
+        user2: toUser,
+        timestamp: Date.now()
+      });
+    } else {
+      // Create standard outgoing request
+      const exists = db.requests.some(r => 
+        r.from.toLowerCase() === fromL && r.to.toLowerCase() === toL
+      );
+      if (!exists) {
+        db.requests.push({
+          from: fromUser,
+          to: toUser,
+          timestamp: Date.now()
+        });
+      }
+    }
+  }
+
+  if (action === 'accept-request') {
+    const reqIndex = db.requests.findIndex(r => {
+      const rf = r.from.toLowerCase();
+      const rt = r.to.toLowerCase();
+      return (rf === fromL && rt === toL) || (rf === toL && rt === fromL);
+    });
+    if (reqIndex !== -1) {
+      const matchedReq = db.requests[reqIndex];
+      db.requests.splice(reqIndex, 1);
+      // Add friendship if not exists
+      const exists = db.friends.some(f => 
+        (f.user1.toLowerCase() === fromL && f.user2.toLowerCase() === toL) ||
+        (f.user1.toLowerCase() === toL && f.user2.toLowerCase() === fromL)
+      );
+      if (!exists) {
+        db.friends.push({
+          user1: matchedReq.to,
+          user2: matchedReq.from,
+          timestamp: Date.now()
+        });
+      }
+    }
+  }
+
+  if (action === 'decline-request') {
+    const reqIndex = db.requests.findIndex(r => {
+      const rf = r.from.toLowerCase();
+      const rt = r.to.toLowerCase();
+      return (rf === fromL && rt === toL) || (rf === toL && rt === fromL);
+    });
+    if (reqIndex !== -1) {
+      db.requests.splice(reqIndex, 1);
+    }
+  }
+
+  if (action === 'cancel-request') {
+    const reqIndex = db.requests.findIndex(r => {
+      const rf = r.from.toLowerCase();
+      const rt = r.to.toLowerCase();
+      return (rf === fromL && rt === toL) || (rf === toL && rt === fromL);
+    });
+    if (reqIndex !== -1) {
+      db.requests.splice(reqIndex, 1);
+    }
+  }
+
+  if (action === 'delete-friend') {
+    db.friends = db.friends.filter(f => {
+      const u1L = f.user1.toLowerCase();
+      const u2L = f.user2.toLowerCase();
+      return !((u1L === fromL && u2L === toL) || (u1L === toL && u2L === fromL));
+    });
+  }
+
+  saveFriendsData(db);
+  return db;
+});
+
+ipcMain.handle('friends-send-message', async (event, { fromUser, toUser, text }) => {
+  const db = getFriendsData();
+  db.messages.push({
+    from: fromUser,
+    to: toUser,
+    message: text,
+    timestamp: Date.now()
+  });
+  saveFriendsData(db);
+  return db;
+});
