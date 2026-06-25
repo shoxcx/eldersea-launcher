@@ -17,8 +17,9 @@ const AuthModal = ({ onClose }) => {
   const [currentUserData, setCurrentUserData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [rememberDeviceChecked, setRememberDeviceChecked] = useState(false);
 
-  const { login: setStoreLogin } = useAuthStore();
+  const { login: setStoreLogin, rememberedDevices, rememberDevice } = useAuthStore();
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -28,9 +29,15 @@ const AuthModal = ({ onClose }) => {
       if (tab === 'login') {
         const user = await firebaseService.login(pseudo, password);
         if (user.twoFaSecret) {
-          setTwoFaSecret(user.twoFaSecret);
-          setCurrentUserData(user);
-          setStep('verify2fa');
+          const isRemembered = rememberedDevices && rememberedDevices[pseudo.toLowerCase()] && rememberedDevices[pseudo.toLowerCase()] > Date.now();
+          if (isRemembered) {
+            setStoreLogin(user.pseudo, user.email, user.createdAt);
+            onClose();
+          } else {
+            setTwoFaSecret(user.twoFaSecret);
+            setCurrentUserData(user);
+            setStep('verify2fa');
+          }
         } else {
           setStoreLogin(user.pseudo, user.email, user.createdAt);
           onClose();
@@ -56,6 +63,7 @@ const AuthModal = ({ onClose }) => {
 
   const handleSetup2FA = async (e) => {
     e.preventDefault();
+    const sanitizedCode = vCode.replace(/\s+/g, '').trim();
     // Verify code with otpauth
     let totp = new OTPAuth.TOTP({
       issuer: 'ElderSea',
@@ -63,12 +71,12 @@ const AuthModal = ({ onClose }) => {
       algorithm: 'SHA1',
       digits: 6,
       period: 30,
-      secret: twoFaSecret
+      secret: OTPAuth.Secret.fromBase32(twoFaSecret)
     });
 
-    const delta = totp.validate({ token: vCode, window: 1 });
+    const delta = totp.validate({ token: sanitizedCode, window: 10 });
     if (delta === null) {
-      setError('Code de vérification incorrect.');
+      setError("Code de vérification incorrect. Vérifiez que l'heure de votre PC est bien synchronisée.");
       return;
     }
 
@@ -85,21 +93,25 @@ const AuthModal = ({ onClose }) => {
 
   const handleVerify2FA = (e) => {
     e.preventDefault();
+    const sanitizedCode = vCode.replace(/\s+/g, '').trim();
     let totp = new OTPAuth.TOTP({
       issuer: 'ElderSea',
       label: pseudo,
       algorithm: 'SHA1',
       digits: 6,
       period: 30,
-      secret: twoFaSecret
+      secret: OTPAuth.Secret.fromBase32(twoFaSecret)
     });
 
-    const delta = totp.validate({ token: vCode, window: 1 });
+    const delta = totp.validate({ token: sanitizedCode, window: 10 });
     if (delta !== null) {
+      if (rememberDeviceChecked) {
+        rememberDevice(pseudo);
+      }
       setStoreLogin(currentUserData.pseudo, currentUserData.email, currentUserData.createdAt);
       onClose();
     } else {
-      setError('Code 2FA incorrect.');
+      setError("Code 2FA incorrect. Vérifiez que l'heure de votre PC est bien synchronisée.");
     }
   };
 
@@ -110,7 +122,7 @@ const AuthModal = ({ onClose }) => {
       algorithm: 'SHA1',
       digits: 6,
       period: 30,
-      secret: twoFaSecret
+      secret: OTPAuth.Secret.fromBase32(twoFaSecret)
     });
     return totp.toString();
   };
@@ -221,6 +233,18 @@ const AuthModal = ({ onClose }) => {
                   style={{ textAlign: 'center', fontSize: '24px', letterSpacing: '8px', fontWeight: 700 }}
                   placeholder="000000" value={vCode} onChange={(e) => setVCode(e.target.value)} required 
                 />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
+                <input 
+                  type="checkbox" 
+                  id="rememberDevice" 
+                  checked={rememberDeviceChecked} 
+                  onChange={(e) => setRememberDeviceChecked(e.target.checked)} 
+                  style={{ accentColor: 'var(--purple)', cursor: 'pointer' }}
+                />
+                <label htmlFor="rememberDevice" style={{ fontSize: '12px', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none' }}>
+                  Se souvenir de ce PC pendant 30 jours
+                </label>
               </div>
               {error && <div style={{ color: '#f87171', fontSize: '12px', marginBottom: '16px' }}>{error}</div>}
               <button type="submit" className="btn-primary" style={{ width: '100%', padding: '13px' }}>

@@ -545,18 +545,38 @@ async function syncHTTP(gameRoot) {
           }
       }
 
+      let completedTasks = 0;
+      const totalTasks = filesToSync.length;
+
+      const sendSyncProgress = (filename) => {
+          completedTasks++;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('launch-progress', {
+                  type: 'Vérification & Téléchargement...',
+                  task: completedTasks,
+                  total: totalTasks,
+                  filename: filename
+              });
+          }
+      };
+
       // Création des tâches de vérification et de téléchargement
       const tasks = filesToSync.map(file => async () => {
-          let needsDl = false;
-          if (!fs.existsSync(file.dest)) {
-              needsDl = true;
-          } else if (!file.isLibrary) {
-              needsDl = await checkNeedsDownload(file.url, file.dest);
-          }
+          try {
+              let needsDl = false;
+              if (!fs.existsSync(file.dest)) {
+                  needsDl = true;
+              } else if (!file.isLibrary) {
+                  needsDl = await checkNeedsDownload(file.url, file.dest);
+              }
 
-          if (needsDl) {
-              console.log(`[SYNC] Téléchargement: ${file.url}`);
-              await downloadFile(file.url, file.dest);
+              if (needsDl) {
+                  console.log(`[SYNC] Téléchargement: ${file.url}`);
+                  await downloadFile(file.url, file.dest);
+              }
+          } finally {
+              const relativePath = path.relative(gameRoot, file.dest).replace(/\\/g, '/');
+              sendSyncProgress(relativePath);
           }
       });
 
@@ -865,6 +885,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
                 createTray();
               }
             }
+            applyMinecraftWindowIcon();
         }
     });
 
@@ -1002,3 +1023,56 @@ autoUpdater.on('update-downloaded', (info) => {
 ipcMain.on('install-update', () => {
   autoUpdater.quitAndInstall();
 });
+
+function applyMinecraftWindowIcon() {
+  if (process.platform !== 'win32') return;
+
+  const iconPath = getIconPath();
+  if (!fs.existsSync(iconPath)) return;
+
+  const scriptPath = path.join(GAME_ROOT, 'apply-icon.ps1');
+  const escapedIconPath = iconPath.replace(/'/g, "''");
+
+  const psScript = `
+Add-Type -TypeDefinition '
+  using System;
+  using System.Runtime.InteropServices;
+  public class Win32Api {
+      [DllImport("user32.dll", SetLastError = true)]
+      public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+  }
+'
+Add-Type -AssemblyName System.Drawing
+Start-Sleep -Seconds 3
+try {
+    $bitmap = New-Object System.Drawing.Bitmap('${escapedIconPath}')
+    $hIcon = $bitmap.GetHicon()
+    for ($i = 0; $i -lt 40; $i++) {
+        $proc = Get-Process -Name 'javaw' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like '*ElderSea*' }
+        if ($proc) {
+            $hwnd = $proc.MainWindowHandle
+            if ($hwnd -ne [IntPtr]::Zero) {
+                [Win32Api]::SendMessage($hwnd, 0x0080, 0, $hIcon)
+                [Win32Api]::SendMessage($hwnd, 0x0080, 1, $hIcon)
+                break
+            }
+        }
+        Start-Sleep -Seconds 1
+    }
+} catch {
+    # Ignore errors
+}
+Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue
+`;
+
+  try {
+    fs.writeFileSync(scriptPath, psScript, 'utf8');
+    const cmd = `powershell -ExecutionPolicy Bypass -File "${scriptPath}"`;
+    exec(cmd, (err) => {
+      if (err) console.error('[ICON ERROR] Failed to run icon script:', err);
+      else console.log('[ICON] Custom icon applied successfully!');
+    });
+  } catch (err) {
+    console.error('[ICON ERROR] Failed to write icon script:', err);
+  }
+}

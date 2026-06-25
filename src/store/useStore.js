@@ -17,6 +17,13 @@ export const useAuthStore = create(
       }),
       logout: () => set({ user: null, isLoggedIn: false }),
       updateUser: (newData) => set((state) => ({ user: { ...state.user, ...newData } })),
+      rememberedDevices: {},
+      rememberDevice: (pseudo) => set((state) => ({
+        rememberedDevices: {
+          ...state.rememberedDevices,
+          [pseudo.toLowerCase()]: Date.now() + 30 * 24 * 60 * 60 * 1000
+        }
+      })),
     }),
     { 
       name: 'eldersea-auth',

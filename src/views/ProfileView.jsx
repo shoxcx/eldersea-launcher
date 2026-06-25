@@ -77,7 +77,7 @@ const ProfileView = () => {
           <div style={{ position: 'relative', marginBottom: '25px' }}>
             <div style={{ position: 'absolute', inset: '-10px', borderRadius: '20px', border: '2px solid var(--purple)', opacity: 0.3, animation: 'pulse 2s infinite' }}></div>
             <img 
-              src={`https://mc-heads.net/avatar/${user.pseudo}/128`} 
+              src={`https://minotar.net/avatar/${user.pseudo}/128`} 
               alt="Skin" 
               style={{ width: '128px', height: '128px', borderRadius: '15px', position: 'relative', zIndex: 2, background: 'var(--bg-dark)' }} 
             />

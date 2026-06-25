@@ -29,9 +29,9 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
   const getSkinHead = () => {
     const pseudo = getPseudo();
     if (pseudo !== t.player) {
-      return `https://mc-heads.net/avatar/${pseudo}/64`;
+      return `https://minotar.net/avatar/${pseudo}/64`;
     }
-    return 'https://mc-heads.net/avatar/Steve/64';
+    return 'https://minotar.net/avatar/Steve/64';
   };
 
   const menuItems = [

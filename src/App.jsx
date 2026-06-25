@@ -22,6 +22,15 @@ function App() {
   
   // Download progress state
   const [downloadInfo, setDownloadInfo] = useState(null);
+  const downloadTracker = React.useRef({
+    type: null,
+    startTime: null,
+    startTask: 0,
+    lastTime: null,
+    lastTask: 0,
+    speed: 0,
+    remainingTime: null
+  });
 
   // Update state from Electron
   const [updateState, setUpdateState] = useState(null);
@@ -58,10 +67,53 @@ function App() {
   useEffect(() => {
     if (window.ipcRenderer) {
       const handleProgress = (event, data) => {
-        // data: { type: string, task: number, total: number, filename?: string }
+        const now = Date.now();
+        const tracker = downloadTracker.current;
+        
         let progress = 0;
         if (data.total && data.total > 0) {
           progress = Math.min(100, Math.round((data.task / data.total) * 100));
+        }
+
+        if (tracker.type !== data.type) {
+          tracker.type = data.type;
+          tracker.startTime = now;
+          tracker.startTask = data.task || 0;
+          tracker.lastTime = now;
+          tracker.lastTask = data.task || 0;
+          tracker.speed = 0;
+          tracker.remainingTime = null;
+        } else {
+          const timeElapsed = (now - tracker.lastTime) / 1000;
+          if (timeElapsed >= 0.5) {
+            const taskDiff = data.task - tracker.lastTask;
+            if (taskDiff > 0) {
+              const currentSpeed = taskDiff / timeElapsed;
+              tracker.speed = tracker.speed === 0 ? currentSpeed : tracker.speed * 0.7 + currentSpeed * 0.3;
+              
+              if (tracker.speed > 0) {
+                const remaining = data.total - data.task;
+                tracker.remainingTime = remaining / tracker.speed;
+              }
+            }
+            tracker.lastTime = now;
+            tracker.lastTask = data.task;
+          }
+        }
+
+        let remainingText = '';
+        if (tracker.remainingTime !== null && isFinite(tracker.remainingTime) && tracker.remainingTime > 0) {
+          if (tracker.remainingTime < 60) {
+            remainingText = `${Math.round(tracker.remainingTime)}s restant`;
+          } else {
+            const mins = Math.floor(tracker.remainingTime / 60);
+            const secs = Math.round(tracker.remainingTime % 60);
+            remainingText = `${mins}m ${secs}s restant`;
+          }
+        } else if (progress >= 100) {
+          remainingText = 'Terminé';
+        } else {
+          remainingText = 'Calcul...';
         }
         
         setDownloadInfo(prev => ({
@@ -69,7 +121,8 @@ function App() {
           progress: progress > 0 ? progress : (prev?.progress || 0),
           task: data.task || 0,
           total: data.total || 100,
-          filename: data.filename || null
+          filename: data.filename || null,
+          remainingText: remainingText
         }));
         
         if (data.type === 'finished') {
@@ -110,6 +163,37 @@ function App() {
     if (window.ipcRenderer) {
       window.ipcRenderer.send('install-update');
     }
+  };
+
+  const getTargetFolder = (type, filename) => {
+    if (filename && filename.includes('/')) {
+      const parts = filename.split('/');
+      return `.eldersea/${parts.slice(0, -1).join('/')}`;
+    }
+    
+    switch (type?.toLowerCase()) {
+      case 'assets':
+        return '.eldersea/assets';
+      case 'libraries':
+        return '.eldersea/libraries';
+      case 'natives':
+        return '.eldersea/bin';
+      case 'jar':
+        return '.eldersea/versions';
+      case 'vérification & téléchargement...':
+        return '.eldersea';
+      default:
+        return '.eldersea';
+    }
+  };
+
+  const formatProgressDetail = (task, total) => {
+    if (total > 10000) {
+      const taskMB = (task / (1024 * 1024)).toFixed(1);
+      const totalMB = (total / (1024 * 1024)).toFixed(1);
+      return `${taskMB} MB / ${totalMB} MB`;
+    }
+    return `${task} / ${total} fichiers`;
   };
 
   const [selectedNews, setSelectedNews] = useState(null);
@@ -173,47 +257,55 @@ function App() {
 
       {/* ── DOWNLOAD PROGRESS BUBBLE ── */}
       {downloadInfo && (
-        <div className="download-bubble glass-panel fade-in" style={{
-          position: 'fixed', bottom: '30px', right: '30px', width: '300px',
-          padding: '20px', zIndex: 10000, boxShadow: '0 15px 50px rgba(0,0,0,0.8)',
-          border: '1px solid var(--border-bright)', background: 'rgba(15,22,40,0.9)',
-          backdropFilter: 'blur(15px)', display: 'flex', flexDirection: 'column', gap: '12px'
+        <div className="download-bubble premium-float-bubble" style={{
+          position: 'fixed', bottom: '30px', right: '30px', width: '340px',
+          padding: '20px', zIndex: 10000, display: 'flex', flexDirection: 'column', gap: '12px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div className="pulse-icon" style={{ 
-              background: 'rgba(212,175,55,0.2)', padding: '8px', borderRadius: '10px',
-              color: 'var(--purple-light)'
-            }}>
-              {downloadInfo.type === 'launching' ? <Zap size={20} /> : <Download size={20} />}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div className="premium-orb">
+              {downloadInfo.type === 'launching' ? <Zap size={18} color="var(--purple)" /> : <Download size={18} color="var(--purple)" />}
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div className="cinzel" style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--crystal)' }}>
                 {downloadInfo.type === 'launching' ? 'LANCEMENT DU JEU...' : 'TÉLÉCHARGEMENT...'}
               </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '2px', textTransform: 'uppercase' }}>
-                {downloadInfo.type} ({downloadInfo.progress}%)
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', color: 'var(--text-dim)', marginTop: '2px', textTransform: 'uppercase' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
+                  {downloadInfo.type}
+                </span>
+                <span style={{ fontFamily: 'monospace', color: 'var(--purple-light)', fontWeight: 700, flexShrink: 0 }}>
+                  {formatProgressDetail(downloadInfo.task, downloadInfo.total)} ({downloadInfo.progress}%)
+                </span>
               </div>
-              {downloadInfo.filename && (
-                <div 
-                  style={{ 
-                    fontSize: '9px', color: 'var(--text-muted)', marginTop: '4px',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    maxWidth: '180px', opacity: 0.8, fontFamily: 'monospace'
-                  }}
-                  title={downloadInfo.filename}
-                >
-                  {downloadInfo.filename}
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '6px', fontSize: '9px', color: 'var(--text-muted)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Dossier : <strong style={{ color: 'var(--crystal)' }}>{getTargetFolder(downloadInfo.type, downloadInfo.filename)}</strong></span>
+                  <span style={{ color: 'var(--purple-light)', fontWeight: 700, fontFamily: 'monospace' }}>{downloadInfo.remainingText || 'Calcul...'}</span>
                 </div>
-              )}
+                {downloadInfo.filename && (
+                  <div 
+                    style={{ 
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      opacity: 0.7, fontFamily: 'monospace'
+                    }}
+                    title={downloadInfo.filename}
+                  >
+                    Fichier : {downloadInfo.filename.includes('/') ? downloadInfo.filename.split('/').slice(1).join('/') : downloadInfo.filename}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          <div style={{ height: '6px', width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
-            <div style={{ 
-              height: '100%', width: `${downloadInfo.progress}%`, 
-              background: 'linear-gradient(90deg, var(--purple) 0%, var(--purple-light) 100%)',
-              boxShadow: '0 0 15px var(--purple)', transition: 'width 0.4s ease'
-            }} />
+          <div style={{ height: '8px', width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.03)' }}>
+            <div 
+              className="progress-bar-animated"
+              style={{ 
+                height: '100%', width: `${downloadInfo.progress}%`, 
+                boxShadow: '0 0 10px rgba(212,175,55,0.5)', transition: 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+              }} 
+            />
           </div>
         </div>
       )}
