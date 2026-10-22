@@ -32,17 +32,48 @@ const TopBar = ({ onOpenAuth, onOpenSettings, setActiveTab, onToggleProfile, isP
     if (window.ipcRenderer) {
       try {
         const res = await window.ipcRenderer.invoke('get-server-status');
-        setServerStatus({
-          online: res.online,
-          players: res.players,
-          maxPlayers: res.maxPlayers,
-          loading: false
-        });
+        if (res && typeof res.online === 'boolean') {
+          setServerStatus({
+            online: res.online,
+            players: typeof res.players === 'number' ? res.players : 0,
+            maxPlayers: typeof res.maxPlayers === 'number' ? res.maxPlayers : 0,
+            loading: false
+          });
+        }
       } catch (err) {
         console.error("Failed to fetch server status:", err);
         setServerStatus(prev => ({ ...prev, loading: false }));
       }
     } else {
+      // Browser preview mode: try multiple endpoints to avoid 10-player cap or caching
+      try {
+        const response = await fetch('https://api.mcsrvstat.us/3/eldersea.tekao.fr');
+        const json = await response.json();
+        if (json && typeof json.online === 'boolean') {
+          setServerStatus({
+            online: json.online,
+            players: json.players?.online ?? 0,
+            maxPlayers: json.players?.max ?? 0,
+            loading: false
+          });
+          return;
+        }
+      } catch (e) {}
+
+      try {
+        const response = await fetch('https://mcapi.us/server/status?ip=eldersea.tekao.fr');
+        const json = await response.json();
+        if (json && typeof json.online === 'boolean') {
+          setServerStatus({
+            online: json.online,
+            players: json.players?.now ?? 0,
+            maxPlayers: json.players?.max ?? 0,
+            loading: false
+          });
+          return;
+        }
+      } catch (e) {}
+
       try {
         const response = await fetch('https://api.mcstatus.io/v2/status/java/eldersea.tekao.fr');
         const json = await response.json();
@@ -60,7 +91,7 @@ const TopBar = ({ onOpenAuth, onOpenSettings, setActiveTab, onToggleProfile, isP
 
   React.useEffect(() => {
     checkServerStatus();
-    const interval = setInterval(checkServerStatus, 30000);
+    const interval = setInterval(checkServerStatus, 10000);
     return () => clearInterval(interval);
   }, [checkServerStatus]);
 

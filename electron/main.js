@@ -5,6 +5,7 @@ import https from 'https';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import http from 'http';
+import nodeNet from 'node:net';
 
 import pkg from 'minecraft-launcher-core';
 import { exec } from 'child_process';
@@ -372,32 +373,265 @@ ipcMain.on('open-external-url', (event, url) => {
   shell.openExternal(url);
 });
 
-ipcMain.handle('get-server-status', async () => {
+function encodeVarInt(value) {
+  const buffer = [];
+  while (true) {
+    if ((value & ~0x7F) === 0) {
+      buffer.push(value);
+      break;
+    } else {
+      buffer.push((value & 0x7F) | 0x80);
+      value >>>= 7;
+    }
+  }
+  return Buffer.from(buffer);
+}
+
+function readVarInt(buffer, offset = 0) {
+  let value = 0;
+  let length = 0;
+  let currentByte;
+  while (true) {
+    if (offset + length >= buffer.length) return null;
+    currentByte = buffer[offset + length];
+    value |= (currentByte & 0x7F) << (length * 7);
+    length++;
+    if ((currentByte & 0x80) !== 0x80) break;
+  }
+  return { value, length };
+}
+
+// Rolling active player tracker to break through the 12-player sample cap of Arclight/Forge
+const seenPlayersTracker = new Map(); // id/name -> lastSeenTimestamp
+
+function registerSamplePlayers(sample, now) {
+  if (!Array.isArray(sample)) return;
+  for (const p of sample) {
+    if (!p) continue;
+    // Prefer genuine player name; if "Anonymous Player" or absent, use unique UUID
+    const isAnon = !p.name || p.name === 'Anonymous Player';
+    const key = !isAnon ? p.name : (p.id && p.id !== '00000000-0000-0000-0000-000000000000' ? p.id : null);
+    if (key) {
+      seenPlayersTracker.set(key, now);
+    }
+  }
+}
+
+function pingMinecraftSingle(host = 'eldersea.tekao.fr', port = 25565, timeoutMs = 2500) {
   return new Promise((resolve) => {
-    const req = https.get('https://api.mcstatus.io/v2/status/java/eldersea.tekao.fr', (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
+    const socket = new nodeNet.Socket();
+    let fullBuffer = Buffer.alloc(0);
+    let resolved = false;
+
+    const cleanup = () => {
+      socket.removeAllListeners();
+      socket.destroy();
+    };
+
+    socket.setTimeout(timeoutMs);
+
+    socket.connect(port, host, () => {
+      const hostBuf = Buffer.from(host, 'utf8');
+      const portBuf = Buffer.alloc(2);
+      portBuf.writeUInt16BE(port);
+
+      // Minecraft 1.20.1 handshake (id 0x00, protocol 763, host, port, nextState 1)
+      const handshakePayload = Buffer.concat([
+        encodeVarInt(0x00),
+        encodeVarInt(763),
+        encodeVarInt(hostBuf.length),
+        hostBuf,
+        portBuf,
+        encodeVarInt(1)
+      ]);
+      const handshakePacket = Buffer.concat([
+        encodeVarInt(handshakePayload.length),
+        handshakePayload
+      ]);
+
+      // Status Request (packet id 0x00)
+      const statusPacket = Buffer.concat([
+        encodeVarInt(1),
+        encodeVarInt(0x00)
+      ]);
+
+      socket.write(handshakePacket);
+      socket.write(statusPacket);
+    });
+
+    socket.on('data', (chunk) => {
+      fullBuffer = Buffer.concat([fullBuffer, chunk]);
+      try {
+        let offset = 0;
+        const packetLen = readVarInt(fullBuffer, offset);
+        if (!packetLen) return;
+        offset += packetLen.length;
+
+        if (fullBuffer.length < offset + packetLen.value) return;
+
+        const packetId = readVarInt(fullBuffer, offset);
+        if (!packetId) return;
+        offset += packetId.length;
+
+        const strLen = readVarInt(fullBuffer, offset);
+        if (!strLen) return;
+        offset += strLen.length;
+
+        const jsonStr = fullBuffer.toString('utf8', offset, offset + strLen.value);
+        const data = JSON.parse(jsonStr);
+
+        resolved = true;
+        cleanup();
+        resolve(data);
+      } catch (e) {}
+    });
+
+    socket.on('error', () => {
+      if (!resolved) { resolved = true; cleanup(); resolve(null); }
+    });
+
+    socket.on('timeout', () => {
+      if (!resolved) { resolved = true; cleanup(); resolve(null); }
+    });
+  });
+}
+
+async function pingMinecraftDirect(host = 'eldersea.tekao.fr', port = 25565) {
+  const first = await pingMinecraftSingle(host, port, 2500);
+  if (!first) return null;
+
+  const rawOnline = typeof first.players?.online === 'number' ? first.players.online : 0;
+  const maxPlayers = typeof first.players?.max === 'number' ? first.players.max : 200;
+  const now = Date.now();
+
+  registerSamplePlayers(first.players?.sample, now);
+
+  // If server reports 12 players or sample reaches 12, Arclight/Forge is capping the
+  // packet at its internal 12-slot sample limit. Send 6 staggered pings (spaced by 60ms)
+  // to avoid triggering server-side connection throttle / ECONNRESET while collecting shuffled slices.
+  if (rawOnline >= 12 || (first.players?.sample && first.players.sample.length >= 12)) {
+    const burstPromises = [];
+    for (let i = 0; i < 6; i++) {
+      burstPromises.push(new Promise((resolve) => {
+        setTimeout(async () => {
+          try {
+            const res = await pingMinecraftSingle(host, port, 2500);
+            resolve(res);
+          } catch (e) {
+            resolve(null);
+          }
+        }, i * 60);
+      }));
+    }
+
+    const burstResults = await Promise.all(burstPromises);
+    for (const res of burstResults) {
+      if (res && res.players && Array.isArray(res.players.sample)) {
+        registerSamplePlayers(res.players.sample, now);
+      }
+    }
+  }
+
+  // Prune players not seen in any sample for > 60 seconds
+  const cutoff = now - 60000;
+  for (const [name, ts] of seenPlayersTracker.entries()) {
+    if (ts < cutoff) seenPlayersTracker.delete(name);
+  }
+
+  // If the server dropped below 12 players, reset tracker to current actual players
+  if (rawOnline < 12) {
+    seenPlayersTracker.clear();
+    registerSamplePlayers(first.players?.sample, now);
+  }
+
+  const finalPlayerCount = Math.max(rawOnline, seenPlayersTracker.size);
+
+  return {
+    online: true,
+    players: finalPlayerCount,
+    maxPlayers
+  };
+}
+
+function fetchJsonUrl(url, headers = {}, timeoutMs = 3500) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers, timeout: timeoutMs }, (res) => {
+      let d = '';
+      res.on('data', c => d += c);
       res.on('end', () => {
         try {
-          const json = JSON.parse(data);
-          resolve({
-            online: json.online ?? false,
-            players: json.players ? (json.players.online ?? 0) : 0,
-            maxPlayers: json.players ? (json.players.max ?? 0) : 0
-          });
+          resolve(JSON.parse(d));
         } catch (e) {
-          resolve({ online: false, players: 0, maxPlayers: 0 });
+          reject(e);
         }
       });
     });
-    req.on('error', () => {
-      resolve({ online: false, players: 0, maxPlayers: 0 });
-    });
-    req.setTimeout(5000, () => {
+    req.on('error', reject);
+    req.on('timeout', () => {
       req.destroy();
-      resolve({ online: false, players: 0, maxPlayers: 0 });
+      reject(new Error('HTTP timeout'));
     });
   });
+}
+
+ipcMain.handle('get-server-status', async () => {
+  // 1. Direct Minecraft SLP Ping via native TCP socket (no 10-player sample cap, 0s cache)
+  try {
+    const directResult = await pingMinecraftDirect('eldersea.tekao.fr', 25565);
+    if (directResult && directResult.online) {
+      return directResult;
+    }
+  } catch (err) {
+    console.warn('[STATUS] Direct TCP ping failed, falling back to HTTP APIs...', err.message);
+  }
+
+  // 2. Fallback: mcsrvstat.us (reads real online player count)
+  try {
+    const json = await fetchJsonUrl('https://api.mcsrvstat.us/3/eldersea.tekao.fr', { 'User-Agent': 'ElderSea-Launcher/1.0' }, 3500);
+    if (json && typeof json.online === 'boolean') {
+      return {
+        online: json.online,
+        players: json.players?.online ?? 0,
+        maxPlayers: json.players?.max ?? 0
+      };
+    }
+  } catch (err) {}
+
+  // 3. Fallback: mcapi.us
+  try {
+    const json = await fetchJsonUrl('https://mcapi.us/server/status?ip=eldersea.tekao.fr', {}, 3500);
+    if (json && typeof json.online === 'boolean') {
+      return {
+        online: json.online,
+        players: json.players?.now ?? 0,
+        maxPlayers: json.players?.max ?? 0
+      };
+    }
+  } catch (err) {}
+
+  // 4. Fallback: minetools.eu
+  try {
+    const json = await fetchJsonUrl('https://api.minetools.eu/ping/eldersea.tekao.fr', {}, 3500);
+    if (json && json.players) {
+      return {
+        online: true,
+        players: json.players?.online ?? 0,
+        maxPlayers: json.players?.max ?? 0
+      };
+    }
+  } catch (err) {}
+
+  // 5. Fallback: mcstatus.io
+  try {
+    const json = await fetchJsonUrl('https://api.mcstatus.io/v2/status/java/eldersea.tekao.fr', {}, 3500);
+    return {
+      online: json.online ?? false,
+      players: json.players?.online ?? 0,
+      maxPlayers: json.players?.max ?? 0
+    };
+  } catch (err) {}
+
+  return { online: false, players: 0, maxPlayers: 0 };
 });
 
 ipcMain.handle('verify-files', async () => {
