@@ -1341,7 +1341,9 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
                 createTray();
               }
             }
+            patchMinecraftAssetIcons();
             applyMinecraftWindowIcon();
+            triggerDeliverPendingPurchases(pseudo);
         }
     });
 
@@ -1519,12 +1521,70 @@ ipcMain.on('install-update', () => {
   autoUpdater.quitAndInstall();
 });
 
+function getPhysicalIconPath() {
+  const targetDir = GAME_ROOT;
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+  const targetPath = path.join(targetDir, 'eldersea_app_icon.png');
+  try {
+    const src = getIconPath();
+    if (fs.existsSync(src)) {
+      const data = fs.readFileSync(src);
+      fs.writeFileSync(targetPath, data);
+      return targetPath;
+    }
+  } catch (err) {
+    console.warn('[ICON] Erreur extraction physical icon:', err.message);
+  }
+  return targetPath;
+}
+
+function triggerDeliverPendingPurchases(pseudo) {
+  if (!pseudo) return;
+  const postData = JSON.stringify({ pseudo });
+  const candidates = [
+    'https://eldersea.tekao.fr/api/shop/deliver-pending',
+    'https://eldersea.tekao.fr/shop/deliver-pending'
+  ];
+  for (const urlStr of candidates) {
+    try {
+      const parsed = new URL(urlStr);
+      const req = https.request({
+        hostname: parsed.hostname,
+        port: parsed.port || 443,
+        path: parsed.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData)
+        },
+        timeout: 4000
+      }, (res) => {
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            console.log(`[SHOP] Achats en attente livrés avec succès pour ${pseudo}`);
+          }
+        });
+      });
+      req.on('error', () => {});
+      req.on('timeout', () => { try { req.destroy(); } catch (e) {} });
+      req.write(postData);
+      req.end();
+      break;
+    } catch (e) {}
+  }
+}
+
 function patchMinecraftAssetIcons() {
   try {
-    const iconPath = getIconPath();
-    if (!fs.existsSync(iconPath)) return;
+    const physicalIcon = getPhysicalIconPath();
+    if (!fs.existsSync(physicalIcon)) return;
 
-    const baseIcon = nativeImage.createFromPath(iconPath);
+    const baseBuf = fs.readFileSync(physicalIcon);
+    const baseIcon = nativeImage.createFromBuffer(baseBuf);
     if (baseIcon.isEmpty()) return;
 
     const indexesDir = path.join(GAME_ROOT, 'assets', 'indexes');
@@ -1568,13 +1628,13 @@ function patchMinecraftAssetIcons() {
 function applyMinecraftWindowIcon() {
   if (process.platform !== 'win32') return;
 
-  const iconPath = getIconPath();
-  if (!fs.existsSync(iconPath)) return;
+  const physicalIcon = getPhysicalIconPath();
+  if (!fs.existsSync(physicalIcon)) return;
 
   patchMinecraftAssetIcons();
 
   const scriptPath = path.join(GAME_ROOT, 'apply-icon.ps1');
-  const escapedIconPath = iconPath.replace(/'/g, "''");
+  const escapedIconPath = physicalIcon.replace(/'/g, "''");
 
   const psScript = `
 Add-Type -TypeDefinition @"
@@ -1612,6 +1672,9 @@ public class Win32IconHelper {
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
 
@@ -1647,7 +1710,13 @@ public class Win32IconHelper {
             GetWindowText(hWnd, sb, 512);
             string title = sb.ToString();
 
-            if (pidMatch && !string.IsNullOrEmpty(title)) {
+            StringBuilder cb = new StringBuilder(256);
+            GetClassName(hWnd, cb, 256);
+            string className = cb.ToString();
+
+            if (pidMatch) {
+                list.Add(hWnd);
+            } else if (className == "GLFW30" || className == "SunAwtFrame") {
                 list.Add(hWnd);
             } else if (!string.IsNullOrEmpty(title)) {
                 if (title.IndexOf("Minecraft", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -1675,9 +1744,16 @@ try {
     $hIconSmall = $bmpSmall.GetHicon()
     $hIconBig = $bmpBig.GetHicon()
 
-    $appliedCount = 0
-    for ($i = 0; $i -lt 90; $i++) {
-        $procs = Get-CimInstance Win32_Process -Filter "Name = 'javaw.exe' or Name = 'java.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*.eldersea*' -or $_.CommandLine -like '*forge*' }
+    $consecutiveNoProcess = 0
+    while ($consecutiveNoProcess -lt 15) {
+        $procs = Get-CimInstance Win32_Process -Filter "Name = 'javaw.exe' or Name = 'java.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*.eldersea*' -or $_.CommandLine -like '*forge*' -or $_.CommandLine -like '*1.20.1*' }
+        
+        if (-not $procs) {
+            $consecutiveNoProcess++
+            Start-Sleep -Milliseconds 1500
+            continue
+        }
+        $consecutiveNoProcess = 0
         $pids = [uint32[]]@($procs | ForEach-Object { [uint32]$_.ProcessId })
 
         $windows = [Win32IconHelper]::FindMatchingWindows($pids)
@@ -1687,15 +1763,11 @@ try {
                 [Win32IconHelper]::SendMessage($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_BIG, $hIconBig)
                 [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICON, $hIconBig)
                 [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICONSM, $hIconSmall)
-                [Win32IconHelper]::SetWindowText($hwnd, "ElderSea RPG")
+                [Win32IconHelper]::SetWindowText($hwnd, "ElderSea RPG 1.20.1")
                 [Win32IconHelper]::SetWindowPos($hwnd, [IntPtr]::Zero, 0, 0, 0, 0, 0x0027)
             }
-            $appliedCount++
-            if ($appliedCount -gt 25) {
-                break
-            }
         }
-        Start-Sleep -Milliseconds 1000
+        Start-Sleep -Milliseconds 1500
     }
 } catch {
     # Ignore errors
@@ -1754,41 +1826,57 @@ function saveLocalFriendsData(data) {
 }
 
 async function fetchCloudFriendsData() {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 4000);
-  try {
-    const res = await fetch(CLOUD_FRIENDS_URL, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (res.ok) {
-      const data = await res.json();
-      if (!Array.isArray(data.requests)) data.requests = [];
-      if (!Array.isArray(data.friends)) data.friends = [];
-      if (!Array.isArray(data.messages)) data.messages = [];
-      saveLocalFriendsData(data);
-      return data;
+  const candidateUrls = [
+    'https://eldersea.tekao.fr/api/friends',
+    'https://eldersea.tekao.fr/friends'
+  ];
+
+  for (const url of candidateUrls) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data === 'object') {
+          if (!Array.isArray(data.requests)) data.requests = [];
+          if (!Array.isArray(data.friends)) data.friends = [];
+          if (!Array.isArray(data.messages)) data.messages = [];
+          saveLocalFriendsData(data);
+          return data;
+        }
+      }
+    } catch (e) {
+      clearTimeout(timeoutId);
     }
-  } catch (e) {
-    clearTimeout(timeoutId);
-    console.warn('[FRIENDS DB CLOUD FETCH ERROR/TIMEOUT] Falling back to local cache:', e.message);
   }
+
   return getLocalFriendsData();
 }
 
 async function pushCloudFriendsData(data) {
   saveLocalFriendsData(data);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 4000);
-  try {
-    await fetch(CLOUD_FRIENDS_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(data),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-  } catch (e) {
-    clearTimeout(timeoutId);
-    console.error('[FRIENDS DB CLOUD PUSH ERROR]', e.message);
+  const candidateUrls = [
+    'https://eldersea.tekao.fr/api/friends',
+    'https://eldersea.tekao.fr/friends'
+  ];
+
+  for (const url of candidateUrls) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    try {
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(data),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) return true;
+    } catch (e) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 

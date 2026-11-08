@@ -397,10 +397,12 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
   // Parse friendships
   const getFriendsList = () => {
     const list = [];
+    const curL = (currentPseudo || '').toLowerCase();
+    if (!curL || !Array.isArray(friendsData?.friends)) return list;
     friendsData.friends.forEach(f => {
+      if (!f || !f.user1 || !f.user2) return;
       const u1L = f.user1.toLowerCase();
       const u2L = f.user2.toLowerCase();
-      const curL = currentPseudo.toLowerCase();
       if (u1L === curL) {
         list.push(f.user2);
       } else if (u2L === curL) {
@@ -412,12 +414,16 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
 
   // Retrieve incoming requests (where `to === currentPseudo`)
   const getIncomingRequests = () => {
-    return friendsData.requests.filter(r => r.to.toLowerCase() === currentPseudo.toLowerCase());
+    const curL = (currentPseudo || '').toLowerCase();
+    if (!curL || !Array.isArray(friendsData?.requests)) return [];
+    return friendsData.requests.filter(r => r && r.to && r.to.toLowerCase() === curL);
   };
 
   // Retrieve outgoing requests (where `from === currentPseudo`)
   const getOutgoingRequests = () => {
-    return friendsData.requests.filter(r => r.from.toLowerCase() === currentPseudo.toLowerCase());
+    const curL = (currentPseudo || '').toLowerCase();
+    if (!curL || !Array.isArray(friendsData?.requests)) return [];
+    return friendsData.requests.filter(r => r && r.from && r.from.toLowerCase() === curL);
   };
 
   // Cross-reference target user details from API users database
