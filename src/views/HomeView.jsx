@@ -13,15 +13,34 @@ const HomeView = ({ onOpenAuth, setSelectedNews }) => {
   const [newsList, setNewsList] = useState([]);
 
   useEffect(() => {
+    let cleanupIpc = null;
     if (window.ipcRenderer) {
-      window.ipcRenderer.on('game-status', (_, running) => {
+      const onStatus = (_, running) => {
         setGameRunning(running);
         if (!running) setIsLaunching(false);
-      });
+      };
+      const onErr = () => {
+        setIsLaunching(false);
+        setGameRunning(false);
+      };
+      const onFin = () => {
+        setIsLaunching(false);
+        setGameRunning(false);
+      };
+
+      window.ipcRenderer.on('game-status', onStatus);
+      window.ipcRenderer.on('launch-error', onErr);
+      window.ipcRenderer.on('launch-finished', onFin);
 
       window.ipcRenderer.invoke('check-game-running').then(running => {
         setGameRunning(running);
       });
+
+      cleanupIpc = () => {
+        window.ipcRenderer.removeListener('game-status', onStatus);
+        window.ipcRenderer.removeListener('launch-error', onErr);
+        window.ipcRenderer.removeListener('launch-finished', onFin);
+      };
     }
 
     const fetchNews = async () => {
@@ -39,6 +58,10 @@ const HomeView = ({ onOpenAuth, setSelectedNews }) => {
       }
     };
     fetchNews();
+
+    return () => {
+      if (cleanupIpc) cleanupIpc();
+    };
   }, []);
 
   const handleLaunch = () => {
@@ -52,17 +75,8 @@ const HomeView = ({ onOpenAuth, setSelectedNews }) => {
     if (window.ipcRenderer) {
       window.ipcRenderer.send('launch-started');
       window.ipcRenderer.send('launch-game', { pseudo: user.pseudo, ram, installPath: null });
-      window.ipcRenderer.on('launch-error', (_, err) => { 
-        setIsLaunching(false); 
-        setGameRunning(false);
-        alert('Erreur: ' + err); 
-      });
-      window.ipcRenderer.on('launch-finished', () => { 
-        setIsLaunching(false); 
-        setGameRunning(false);
-      });
     } else {
-      setTimeout(() => { setIsLaunching(false); alert('Jeu lancé ! (Simulation)'); }, 2000);
+      setTimeout(() => { setIsLaunching(false); }, 2000);
     }
   };
 

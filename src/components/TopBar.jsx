@@ -9,6 +9,24 @@ const TopBar = ({ onOpenAuth, onOpenSettings, setActiveTab, onToggleProfile, isP
   const { language } = useSettingsStore();
   const t = translations[language] || translations['fr'];
   const [isPremium, setIsPremium] = React.useState(false);
+  const [isMaximized, setIsMaximized] = React.useState(false);
+
+  React.useEffect(() => {
+    if (window.ipcRenderer) {
+      window.ipcRenderer.invoke('is-window-maximized').then(val => {
+        if (typeof val === 'boolean') setIsMaximized(val);
+      }).catch(() => {});
+
+      const handleMaxState = (event, val) => {
+        setIsMaximized(!!val);
+      };
+
+      window.ipcRenderer.on('window-maximized-state', handleMaxState);
+      return () => {
+        window.ipcRenderer.removeListener('window-maximized-state', handleMaxState);
+      };
+    }
+  }, []);
 
   React.useEffect(() => {
     const checkStatus = async () => {
@@ -91,8 +109,13 @@ const TopBar = ({ onOpenAuth, onOpenSettings, setActiveTab, onToggleProfile, isP
 
   React.useEffect(() => {
     checkServerStatus();
-    const interval = setInterval(checkServerStatus, 10000);
-    return () => clearInterval(interval);
+    const interval = setInterval(checkServerStatus, 4000);
+    const onFocus = () => checkServerStatus();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [checkServerStatus]);
 
   const handleDiscordClick = () => {
@@ -130,7 +153,10 @@ const TopBar = ({ onOpenAuth, onOpenSettings, setActiveTab, onToggleProfile, isP
       flexShrink: 0, height: '64px', position: 'relative',
       zIndex: 1000
     }}>
-      <div style={{ position: 'absolute', inset: 0, WebkitAppRegion: 'drag', zIndex: 0 }} />
+      <div 
+        onDoubleClick={() => handleControl('maximize')}
+        style={{ position: 'absolute', inset: 0, WebkitAppRegion: 'drag', zIndex: 0 }} 
+      />
       
       <div className="topbar-title cinzel" style={{ 
         position: 'relative', zIndex: 1001, fontSize: '13px', color: 'var(--crystal)', 
@@ -194,18 +220,37 @@ const TopBar = ({ onOpenAuth, onOpenSettings, setActiveTab, onToggleProfile, isP
         </button>
         
         {/* ── PIRATE THEMED WINDOW CONTROLS ── */}
-        <div className="window-controls" style={{ display: 'flex', gap: '12px' }}>
+        <div className="window-controls" style={{ display: 'flex', gap: '8px', position: 'relative', zIndex: 1001, WebkitAppRegion: 'no-drag' }}>
           <button 
             onClick={() => handleControl('minimize')} 
             className="pirate-control minimize"
             style={btnStyle}
+            title="Réduire"
           >
             <Minus size={14} />
+          </button>
+          <button 
+            onClick={() => handleControl('maximize')} 
+            className="pirate-control maximize"
+            style={btnStyle}
+            title={isMaximized ? "Restaurer" : "Agrandir"}
+          >
+            {isMaximized ? (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="6" y="9" width="14" height="11" rx="2" />
+                <path d="M18 9V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" />
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              </svg>
+            )}
           </button>
           <button 
             onClick={() => handleControl('close')} 
             className="pirate-control close"
             style={{ ...btnStyle, borderColor: 'rgba(248,113,113,0.3)' }}
+            title="Fermer"
           >
             <CloseIcon size={14} />
           </button>

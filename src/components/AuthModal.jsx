@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../store/useStore';
 import { firebaseService } from '../services/firebase';
-import { X, User, Lock, Mail, Eye, EyeOff, ShieldCheck, Smartphone } from 'lucide-react';
+import { X, User, Lock, Mail, Eye, EyeOff, ShieldCheck, Smartphone, AlertTriangle } from 'lucide-react';
 import * as OTPAuth from 'otpauth';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -97,7 +97,7 @@ const AuthModal = ({ onClose }) => {
       setStoreLogin(pseudo, email);
       onClose();
     } catch (err) {
-      setError('Erreur lors de la création du compte.');
+      setError(err.message || 'Erreur lors de la création du compte.');
     }
     setLoading(false);
   };
@@ -207,7 +207,25 @@ const AuthModal = ({ onClose }) => {
                 </div>
               </div>
 
-              {error && <div style={{ color: '#f87171', fontSize: '12px', marginBottom: '16px', textAlign: 'center', background: 'rgba(248,113,113,0.1)', padding: '8px', borderRadius: '8px' }}>{error}</div>}
+              {error && (
+                <div style={{
+                  color: '#fca5a5',
+                  fontSize: '12.5px',
+                  lineHeight: '1.4',
+                  marginBottom: '16px',
+                  textAlign: 'left',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}>
+                  <AlertTriangle size={18} style={{ flexShrink: 0, color: '#ef4444' }} />
+                  <span>{error}</span>
+                </div>
+              )}
 
               <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', padding: '13px', fontSize: '13px', marginTop: '10px' }}>
                 {loading ? 'CHARGEMENT...' : tab === 'login' ? 'SE CONNECTER' : 'CONTINUER'}
@@ -233,7 +251,25 @@ const AuthModal = ({ onClose }) => {
                   placeholder="000000" value={vCode} onChange={(e) => setVCode(e.target.value)} required 
                 />
               </div>
-              {error && <div style={{ color: '#f87171', fontSize: '12px', marginBottom: '16px' }}>{error}</div>}
+              {error && (
+                <div style={{
+                  color: '#fca5a5',
+                  fontSize: '12px',
+                  lineHeight: '1.4',
+                  marginBottom: '16px',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  textAlign: 'left'
+                }}>
+                  <AlertTriangle size={18} style={{ flexShrink: 0, color: '#ef4444' }} />
+                  <span>{error}</span>
+                </div>
+              )}
               <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', padding: '13px' }}>
                 VALIDER ET CRÉER
               </button>
@@ -269,7 +305,25 @@ const AuthModal = ({ onClose }) => {
                   Se souvenir de ce PC pendant 30 jours
                 </label>
               </div>
-              {error && <div style={{ color: '#f87171', fontSize: '12px', marginBottom: '16px' }}>{error}</div>}
+              {error && (
+                <div style={{
+                  color: '#fca5a5',
+                  fontSize: '12px',
+                  lineHeight: '1.4',
+                  marginBottom: '16px',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  textAlign: 'left'
+                }}>
+                  <AlertTriangle size={18} style={{ flexShrink: 0, color: '#ef4444' }} />
+                  <span>{error}</span>
+                </div>
+              )}
               <button type="submit" className="btn-primary" style={{ width: '100%', padding: '13px' }}>
                 SE CONNECTER
               </button>

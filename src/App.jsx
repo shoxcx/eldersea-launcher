@@ -9,9 +9,9 @@ import ImageHostingView from './views/ImageHostingView';
 import ShopView from './views/ShopView';
 import ProfileView from './views/ProfileView';
 import FriendsView from './views/FriendsView';
-import MapView from './views/MapView';
 import AuthModal from './components/AuthModal';
 import SettingsModal from './components/SettingsModal';
+import CrashModal from './components/CrashModal';
 import MediaPlayer from './components/MediaPlayer';
 import { useAuthStore, useSettingsStore } from './store/useStore';
 import { translations } from './translations';
@@ -25,6 +25,7 @@ function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState(null);
   const [activeChatFriend, setActiveChatFriend] = useState(null);
+  const [crashData, setCrashData] = useState(null);
   
   const [inspectedUser, setInspectedUser] = useState(null);
   const [inspectedUserDetails, setInspectedUserDetails] = useState(null);
@@ -85,7 +86,7 @@ function App() {
     const fetchInspectedUser = async () => {
       setIsInspectedLoading(true);
       try {
-        const res = await fetch('https://eldersea.tekao.fr/api/api/users');
+        const res = await fetch('https://eldersea.tekao.fr/api/users');
         if (res.ok && isMounted) {
           const users = await res.json();
           const found = users.find(u => u.pseudo && u.pseudo.toLowerCase() === inspectedUser.toLowerCase());
@@ -130,16 +131,18 @@ function App() {
       const pseudo = typeof user === 'string' ? user : user?.pseudo;
       if (!pseudo) return;
       try {
-        const res = await fetch('https://eldersea.tekao.fr/api/api/users');
+        const res = await fetch('https://eldersea.tekao.fr/api/users');
         if (res.ok) {
           const users = await res.json();
           const found = users.find(u => u.pseudo && u.pseudo.toLowerCase() === pseudo.toLowerCase());
           if (found) {
-            await fetch(`https://eldersea.tekao.fr/api/api/users/${found.id}`, {
+            await fetch(`https://eldersea.tekao.fr/api/users/${found.id}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ lastActive: new Date().toISOString() })
             });
+            // Vérifier et livrer d'éventuels achats en attente
+            await fetch(`https://eldersea.tekao.fr/api/shop/deliver-pending?pseudo=${encodeURIComponent(pseudo)}`).catch(() => {});
           }
         }
       } catch (err) {
@@ -155,13 +158,10 @@ function App() {
   // Download progress state
   const [downloadInfo, setDownloadInfo] = useState(null);
   const downloadTracker = React.useRef({
-    type: null,
-    startTime: null,
-    startTask: 0,
+    sessionStartTime: null,
     lastTime: null,
-    lastTask: 0,
-    speed: 0,
-    remainingTime: null
+    currentProgress: 0,
+    smoothRemaining: null
   });
 
   // Update state from Electron
@@ -212,45 +212,40 @@ function App() {
           progress = Math.min(100, Math.round((data.task / data.total) * 100));
         }
 
-        if (tracker.type !== data.type) {
-          tracker.type = data.type;
-          tracker.startTime = now;
-          tracker.startTask = data.task || 0;
-          tracker.lastTime = now;
-          tracker.lastTask = data.task || 0;
-          tracker.speed = 0;
-          tracker.remainingTime = null;
-        } else {
-          const timeElapsed = (now - tracker.lastTime) / 1000;
-          if (timeElapsed >= 0.5) {
-            const taskDiff = data.task - tracker.lastTask;
-            if (taskDiff > 0) {
-              const currentSpeed = taskDiff / timeElapsed;
-              tracker.speed = tracker.speed === 0 ? currentSpeed : tracker.speed * 0.7 + currentSpeed * 0.3;
-              
-              if (tracker.speed > 0) {
-                const remaining = data.total - data.task;
-                tracker.remainingTime = remaining / tracker.speed;
-              }
-            }
-            tracker.lastTime = now;
-            tracker.lastTask = data.task;
+        // Initialize session start time for total download countdown
+        if (!tracker.sessionStartTime || data.type === 'finished' || progress >= 100) {
+          if (progress < 100 && data.type !== 'finished') {
+            tracker.sessionStartTime = now;
+            tracker.currentProgress = progress;
+            tracker.smoothRemaining = null;
           }
         }
 
-        let remainingText = '';
-        if (tracker.remainingTime !== null && isFinite(tracker.remainingTime) && tracker.remainingTime > 0) {
-          if (tracker.remainingTime < 60) {
-            remainingText = `${Math.round(tracker.remainingTime)}s restant`;
-          } else {
-            const mins = Math.floor(tracker.remainingTime / 60);
-            const secs = Math.round(tracker.remainingTime % 60);
-            remainingText = `${mins}m ${secs}s restant`;
+        tracker.currentProgress = Math.max(tracker.currentProgress || 0, progress);
+
+        // Calculate global remaining time across the entire download
+        let remainingText = 'Calcul du temps restant...';
+        if (tracker.sessionStartTime && tracker.currentProgress > 1 && tracker.currentProgress < 100) {
+          const totalElapsed = (now - tracker.sessionStartTime) / 1000;
+          if (totalElapsed >= 1) {
+            const estimatedTotalSeconds = totalElapsed / (tracker.currentProgress / 100);
+            const rawRemaining = Math.max(0, estimatedTotalSeconds - totalElapsed);
+            tracker.smoothRemaining = tracker.smoothRemaining === null 
+              ? rawRemaining 
+              : tracker.smoothRemaining * 0.8 + rawRemaining * 0.2;
+
+            const rem = Math.round(tracker.smoothRemaining);
+            if (rem < 60) {
+              remainingText = `Temps total restant : ~${rem}s`;
+            } else {
+              const mins = Math.floor(rem / 60);
+              const secs = rem % 60;
+              remainingText = `Temps total restant : ~${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
+            }
           }
-        } else if (progress >= 100) {
-          remainingText = 'Terminé';
-        } else {
-          remainingText = 'Calcul...';
+        } else if (progress >= 100 || data.type === 'finished') {
+          remainingText = 'Téléchargement terminé';
+          tracker.sessionStartTime = null;
         }
         
         setDownloadInfo(prev => ({
@@ -304,8 +299,29 @@ function App() {
       };
 
       const handleError = (event, msg) => {
-        alert("Erreur de lancement: " + msg);
         setDownloadInfo(null);
+        if (typeof msg === 'object' && msg !== null) {
+          setCrashData(msg);
+        } else {
+          setCrashData({
+            title: "Erreur de lancement",
+            message: msg || "Une erreur est survenue lors de l'exécution du jeu.",
+            logs: msg || "Aucun log disponible."
+          });
+        }
+      };
+
+      const handleGameCrashed = (event, data) => {
+        setDownloadInfo(null);
+        if (typeof data === 'object' && data !== null) {
+          setCrashData(data);
+        } else {
+          setCrashData({
+            title: "Crash du jeu",
+            message: data,
+            logs: data
+          });
+        }
       };
 
       const handleUpdateStatus = (event, data) => {
@@ -315,6 +331,7 @@ function App() {
       window.ipcRenderer.on('launch-progress', handleProgress);
       window.ipcRenderer.on('launch-finished', handleFinished);
       window.ipcRenderer.on('launch-error', handleError);
+      window.ipcRenderer.on('game-crashed', handleGameCrashed);
       window.ipcRenderer.on('hide-progress', () => setDownloadInfo(null));
       window.ipcRenderer.on('update-status', handleUpdateStatus);
 
@@ -323,6 +340,7 @@ function App() {
         window.ipcRenderer.removeAllListeners('launch-progress');
         window.ipcRenderer.removeAllListeners('launch-finished');
         window.ipcRenderer.removeAllListeners('launch-error');
+        window.ipcRenderer.removeAllListeners('game-crashed');
         window.ipcRenderer.removeAllListeners('update-status');
       };
     }
@@ -408,7 +426,6 @@ function App() {
           {activeTab === 'screenshots' && <ScreenshotsView setFullscreen={setFullscreenImage} setActiveTab={setActiveTab} />}
           {activeTab === 'image-hosting' && <ImageHostingView setFullscreen={setFullscreenImage} setActiveTab={setActiveTab} />}
           {activeTab === 'shop' && <ShopView />}
-          {activeTab === 'map' && <MapView />}
           {activeTab === 'profile' && <ProfileView />}
           {activeTab === 'friends' && (
             <FriendsView 
@@ -423,6 +440,7 @@ function App() {
 
       {isAuthModalOpen && <AuthModal onClose={() => setIsAuthModalOpen(false)} />}
       {isSettingsOpen && <SettingsModal onClose={() => setIsSettingsOpen(false)} />}
+      <CrashModal isOpen={!!crashData} data={crashData} onClose={() => setCrashData(null)} />
       
       {fullscreenImage && (
         <div className="fullscreen-overlay" onClick={() => setFullscreenImage(null)} style={{ 

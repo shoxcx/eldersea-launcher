@@ -350,7 +350,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       }
     } else {
       try {
-        const res = await fetch('https://jsonblob.com/api/jsonBlob/019faa7e-8112-7c0d-a2f9-975eea215760');
+        const res = await fetch('https://eldersea.tekao.fr/api/friends');
         if (res.ok) {
           const data = await res.json();
           if (!Array.isArray(data.requests)) data.requests = [];
@@ -364,7 +364,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
     }
 
     try {
-      const res = await fetch('https://eldersea.tekao.fr/api/api/users');
+      const res = await fetch('https://eldersea.tekao.fr/api/users');
       if (res.ok) {
         const users = await res.json();
         setAllApiUsers(users);

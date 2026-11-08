@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, protocol, net, dialog, Tray, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, protocol, net, dialog, Tray, Menu, screen, nativeImage } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
@@ -21,6 +21,7 @@ const __dirname = path.dirname(__filename);
 
 let mainWindow;
 let isGameRunning = false;
+let isQuitting = false;
 let tray = null;
 let backgroundMode = true; // Match the Zustand store default value
 let showConsole = false;
@@ -243,16 +244,73 @@ if (!gotTheLock) {
   });
 
   function createWindow() {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+    // Calcul adaptatif dynamique selon la résolution de l'écran de l'utilisateur
+    let targetWidth = 1200;
+    let targetHeight = 800;
+
+    if (screenHeight < 800) {
+      // Petits écrans / pc portables (ex: 1366x768, 1280x720)
+      targetHeight = Math.max(540, Math.floor(screenHeight * 0.90));
+      targetWidth = Math.max(880, Math.min(Math.floor(screenWidth * 0.92), Math.floor(targetHeight * 1.48)));
+    } else if (screenHeight <= 950) {
+      // Résolutions moyennes (1600x900, 1440x900)
+      targetHeight = Math.floor(screenHeight * 0.85);
+      targetWidth = Math.min(Math.floor(screenWidth * 0.88), Math.floor(targetHeight * 1.5));
+    } else if (screenHeight >= 1400) {
+      // Très grands écrans (1440p 2K, 4K)
+      targetHeight = Math.min(Math.floor(screenHeight * 0.72), 1150);
+      targetWidth = Math.min(Math.floor(screenWidth * 0.75), Math.floor(targetHeight * 1.5));
+    } else {
+      // Écrans 1080p standard (1920x1080)
+      targetHeight = Math.min(800, Math.floor(screenHeight * 0.82));
+      targetWidth = Math.min(1240, Math.floor(screenWidth * 0.85));
+    }
+
+    // Sécurités dimensionnelles
+    targetWidth = Math.max(920, Math.min(targetWidth, screenWidth - 30));
+    targetHeight = Math.max(540, Math.min(targetHeight, screenHeight - 30));
+
     mainWindow = new BrowserWindow({
-      width: 1200, height: 800, frame: false, resizable: false, maximizable: false,
-      title: "ElderSea v1.0.0",
+      width: targetWidth,
+      height: targetHeight,
+      minWidth: 920,
+      minHeight: 540,
+      frame: false,
+      resizable: true,
+      maximizable: true,
+      center: true,
+      title: "ElderSea",
       webPreferences: { 
         nodeIntegration: true, 
         contextIsolation: false,
         webSecurity: false 
       },
-      backgroundColor: '#0a0a0a', show: false,
-      icon: path.join(__dirname, '../dist/logoapp.png')
+      backgroundColor: '#0a0a0a',
+      show: false,
+      icon: getIconPath()
+    });
+
+    mainWindow.on('maximize', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('window-maximized-state', true);
+      }
+    });
+
+    mainWindow.on('unmaximize', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('window-maximized-state', false);
+      }
+    });
+
+    mainWindow.on('close', (event) => {
+      if (backgroundMode && !isQuitting) {
+        event.preventDefault();
+        mainWindow.hide();
+        createTray();
+      }
     });
 
     mainWindow.on('closed', () => {
@@ -270,6 +328,9 @@ if (!gotTheLock) {
       // Vérification initiale si le jeu tourne déjà
       isGameRunning = await checkIfGameIsRunning();
       mainWindow.webContents.send('game-status', isGameRunning);
+
+      // Patch préventif des icônes d'assets Minecraft avec le logo ElderSea
+      patchMinecraftAssetIcons();
 
       // Vérification des mises à jour automatiques via GitHub
       if (process.env.NODE_ENV !== 'development') {
@@ -313,9 +374,29 @@ ipcMain.handle('check-game-running', async () => {
   return isGameRunning;
 });
 
+ipcMain.handle('is-window-maximized', () => {
+  return mainWindow && !mainWindow.isDestroyed() ? mainWindow.isMaximized() : false;
+});
+
 ipcMain.on('window-control', (event, action) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   if (action === 'minimize') mainWindow.minimize();
-  if (action === 'close') app.quit();
+  if (action === 'maximize') {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+  if (action === 'close') {
+    if (backgroundMode && !isQuitting) {
+      mainWindow.hide();
+      createTray();
+    } else {
+      isQuitting = true;
+      app.quit();
+    }
+  }
 });
 
 ipcMain.on('console-window-control', (event, action) => {
@@ -327,6 +408,10 @@ ipcMain.on('console-window-control', (event, action) => {
 ipcMain.on('set-show-console', (event, enable) => {
   showConsole = enable;
   console.log(`[SETTINGS] Set showConsole to ${enable}`);
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
 });
 
 app.on('will-quit', () => {
@@ -401,23 +486,7 @@ function readVarInt(buffer, offset = 0) {
   return { value, length };
 }
 
-// Rolling active player tracker to break through the 12-player sample cap of Arclight/Forge
-const seenPlayersTracker = new Map(); // id/name -> lastSeenTimestamp
-
-function registerSamplePlayers(sample, now) {
-  if (!Array.isArray(sample)) return;
-  for (const p of sample) {
-    if (!p) continue;
-    // Prefer genuine player name; if "Anonymous Player" or absent, use unique UUID
-    const isAnon = !p.name || p.name === 'Anonymous Player';
-    const key = !isAnon ? p.name : (p.id && p.id !== '00000000-0000-0000-0000-000000000000' ? p.id : null);
-    if (key) {
-      seenPlayersTracker.set(key, now);
-    }
-  }
-}
-
-function pingMinecraftSingle(host = 'eldersea.tekao.fr', port = 25565, timeoutMs = 2500) {
+function pingMinecraftSingle(host = 'eldersea.tekao.fr', port = 25565, timeoutMs = 2000) {
   return new Promise((resolve) => {
     const socket = new nodeNet.Socket();
     let fullBuffer = Buffer.alloc(0);
@@ -497,59 +566,13 @@ function pingMinecraftSingle(host = 'eldersea.tekao.fr', port = 25565, timeoutMs
 }
 
 async function pingMinecraftDirect(host = 'eldersea.tekao.fr', port = 25565) {
-  const first = await pingMinecraftSingle(host, port, 2500);
-  if (!first) return null;
-
-  const rawOnline = typeof first.players?.online === 'number' ? first.players.online : 0;
-  const maxPlayers = typeof first.players?.max === 'number' ? first.players.max : 200;
-  const now = Date.now();
-
-  registerSamplePlayers(first.players?.sample, now);
-
-  // If server reports 12 players or sample reaches 12, Arclight/Forge is capping the
-  // packet at its internal 12-slot sample limit. Send 6 staggered pings (spaced by 60ms)
-  // to avoid triggering server-side connection throttle / ECONNRESET while collecting shuffled slices.
-  if (rawOnline >= 12 || (first.players?.sample && first.players.sample.length >= 12)) {
-    const burstPromises = [];
-    for (let i = 0; i < 6; i++) {
-      burstPromises.push(new Promise((resolve) => {
-        setTimeout(async () => {
-          try {
-            const res = await pingMinecraftSingle(host, port, 2500);
-            resolve(res);
-          } catch (e) {
-            resolve(null);
-          }
-        }, i * 60);
-      }));
-    }
-
-    const burstResults = await Promise.all(burstPromises);
-    for (const res of burstResults) {
-      if (res && res.players && Array.isArray(res.players.sample)) {
-        registerSamplePlayers(res.players.sample, now);
-      }
-    }
-  }
-
-  // Prune players not seen in any sample for > 60 seconds
-  const cutoff = now - 60000;
-  for (const [name, ts] of seenPlayersTracker.entries()) {
-    if (ts < cutoff) seenPlayersTracker.delete(name);
-  }
-
-  // If the server dropped below 12 players, reset tracker to current actual players
-  if (rawOnline < 12) {
-    seenPlayersTracker.clear();
-    registerSamplePlayers(first.players?.sample, now);
-  }
-
-  const finalPlayerCount = Math.max(rawOnline, seenPlayersTracker.size);
+  const result = await pingMinecraftSingle(host, port, 2000);
+  if (!result || !result.players) return null;
 
   return {
     online: true,
-    players: finalPlayerCount,
-    maxPlayers
+    players: typeof result.players.online === 'number' ? result.players.online : 0,
+    maxPlayers: typeof result.players.max === 'number' ? result.players.max : 200
   };
 }
 
@@ -575,7 +598,7 @@ function fetchJsonUrl(url, headers = {}, timeoutMs = 3500) {
 }
 
 ipcMain.handle('get-server-status', async () => {
-  // 1. Direct Minecraft SLP Ping via native TCP socket (no 10-player sample cap, 0s cache)
+  // 1. Direct Minecraft SLP Ping via native TCP socket (~50ms, 0s cache, exact player count)
   try {
     const directResult = await pingMinecraftDirect('eldersea.tekao.fr', 25565);
     if (directResult && directResult.online) {
@@ -585,9 +608,9 @@ ipcMain.handle('get-server-status', async () => {
     console.warn('[STATUS] Direct TCP ping failed, falling back to HTTP APIs...', err.message);
   }
 
-  // 2. Fallback: mcsrvstat.us (reads real online player count)
+  // 2. Fallback: mcstatus.io (rapide 2s, sans sample bloqué)
   try {
-    const json = await fetchJsonUrl('https://api.mcsrvstat.us/3/eldersea.tekao.fr', { 'User-Agent': 'ElderSea-Launcher/1.0' }, 3500);
+    const json = await fetchJsonUrl('https://api.mcstatus.io/v2/status/java/eldersea.tekao.fr', {}, 2000);
     if (json && typeof json.online === 'boolean') {
       return {
         online: json.online,
@@ -597,38 +620,16 @@ ipcMain.handle('get-server-status', async () => {
     }
   } catch (err) {}
 
-  // 3. Fallback: mcapi.us
+  // 3. Fallback: mcsrvstat.us
   try {
-    const json = await fetchJsonUrl('https://mcapi.us/server/status?ip=eldersea.tekao.fr', {}, 3500);
+    const json = await fetchJsonUrl('https://api.mcsrvstat.us/3/eldersea.tekao.fr', { 'User-Agent': 'ElderSea-Launcher/1.0' }, 2000);
     if (json && typeof json.online === 'boolean') {
       return {
         online: json.online,
-        players: json.players?.now ?? 0,
-        maxPlayers: json.players?.max ?? 0
-      };
-    }
-  } catch (err) {}
-
-  // 4. Fallback: minetools.eu
-  try {
-    const json = await fetchJsonUrl('https://api.minetools.eu/ping/eldersea.tekao.fr', {}, 3500);
-    if (json && json.players) {
-      return {
-        online: true,
         players: json.players?.online ?? 0,
         maxPlayers: json.players?.max ?? 0
       };
     }
-  } catch (err) {}
-
-  // 5. Fallback: mcstatus.io
-  try {
-    const json = await fetchJsonUrl('https://api.mcstatus.io/v2/status/java/eldersea.tekao.fr', {}, 3500);
-    return {
-      online: json.online ?? false,
-      players: json.players?.online ?? 0,
-      maxPlayers: json.players?.max ?? 0
-    };
   } catch (err) {}
 
   return { online: false, players: 0, maxPlayers: 0 };
@@ -653,98 +654,59 @@ ipcMain.handle('check-mojang', async (event, pseudo) => {
 });
 
 ipcMain.handle('upload-image-to-web', async (event, { base64Data, filename, mimeType }) => {
-  const boundary = '----WebKitFormBoundary' + crypto.randomBytes(16).toString('hex');
-  const buffer = Buffer.from(base64Data, 'base64');
-
-  let postData = [];
-  postData.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="reqtype"\r\n\r\nfileupload\r\n`));
-  postData.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="fileToUpload"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`));
-  postData.push(buffer);
-  postData.push(Buffer.from(`\r\n--${boundary}--\r\n`));
-
-  const finalBuffer = Buffer.concat(postData);
-
-  const uploadToEldersea = () => {
-    return new Promise((resolve, reject) => {
-      const options = {
-        hostname: 'eldersea.tekao.fr',
-        port: 443,
-        path: '/api/api/upload',
-        method: 'POST',
-        headers: {
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-          'Content-Length': finalBuffer.length,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      };
-
-      const req = https.request(options, (res) => {
-        let body = '';
-        res.on('data', chunk => body += chunk);
-        res.on('end', () => {
-          if (res.statusCode === 200 || res.statusCode === 201) {
-            try {
-              const json = JSON.parse(body);
-              if (json.url) resolve(json.url);
-              else resolve(body.trim());
-            } catch (e) {
-              resolve(body.trim());
-            }
-          } else {
-            reject(new Error(`Status ${res.statusCode}`));
-          }
-        });
-      });
-
-      req.on('error', (e) => reject(e));
-      req.write(finalBuffer);
-      req.end();
-    });
-  };
-
-  const uploadToCatbox = () => {
-    return new Promise((resolve, reject) => {
-      const options = {
-        hostname: 'catbox.moe',
-        port: 443,
-        path: '/user/api.php',
-        method: 'POST',
-        headers: {
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-          'Content-Length': finalBuffer.length,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      };
-
-      const req = https.request(options, (res) => {
-        let body = '';
-        res.on('data', chunk => body += chunk);
-        res.on('end', () => {
-          if (res.statusCode === 200 && body.startsWith('http')) {
-            resolve(body.trim());
-          } else {
-            reject(new Error(`Status ${res.statusCode}: ${body}`));
-          }
-        });
-      });
-
-      req.on('error', (e) => reject(e));
-      req.write(finalBuffer);
-      req.end();
-    });
-  };
-
   try {
-    const url = await uploadToEldersea();
-    return { success: true, url };
-  } catch (err) {
-    try {
-      const url = await uploadToCatbox();
-      return { success: true, url };
-    } catch (catboxErr) {
-      console.error('[UPLOAD ERROR]', catboxErr);
-      return { success: false, error: catboxErr.message };
+    if (!base64Data) {
+      return { success: false, error: "Aucune donnée de fichier." };
     }
+
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // 1. Contrôle de taille maximale : 10 Mo
+    if (buffer.length > 10 * 1024 * 1024) {
+      return { success: false, error: "Le fichier dépasse la taille maximale autorisée (10 Mo)." };
+    }
+
+    // 2. Contrôle strict de l'extension
+    const ext = path.extname(filename || '').toLowerCase();
+    const allowedExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+    if (!allowedExts.includes(ext)) {
+      return { success: false, error: "Extension non autorisée. Seules les images PNG, JPG, GIF et WEBP sont acceptées." };
+    }
+
+    // 3. Contrôle strict des Magic Bytes (signatures binaires) - Empêche l'injection de scripts/PHP/malwares
+    const isPng = buffer.length > 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+    const isJpg = buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+    const isGif = buffer.length > 4 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38;
+    const isWebp = buffer.length > 12 && buffer.toString('utf8', 0, 4) === 'RIFF' && buffer.toString('utf8', 8, 12) === 'WEBP';
+
+    if (!isPng && !isJpg && !isGif && !isWebp) {
+      return { success: false, error: "Signature de fichier invalide : Seules les véritables images sont acceptées. Aucune injection n'est permise." };
+    }
+
+    // 4. Envoi sécurisé au serveur ElderSea
+    const sanitizedName = path.basename(filename || 'image.png');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const res = await fetch('https://eldersea.tekao.fr/api/upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ base64Data, filename: sanitizedName }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    const data = await res.json();
+    if (data.success && data.url) {
+      return { success: true, url: data.url };
+    }
+    throw new Error(data.error || "Erreur de téléversement sur le serveur ElderSea");
+  } catch (err) {
+    console.error('[SECURE UPLOAD ERROR]', err.message);
+    return { success: false, error: err.message };
   }
 });
 
@@ -1152,7 +1114,7 @@ async function setupPortableJava(gameRoot) {
 }
 
 function createTray() {
-  if (tray) return;
+  if (tray && !tray.isDestroyed()) return;
 
   const iconPath = getIconPath();
   try {
@@ -1173,6 +1135,7 @@ function createTray() {
       {
         label: 'Quitter',
         click: () => {
+          isQuitting = true;
           app.quit();
         }
       }
@@ -1188,6 +1151,13 @@ function createTray() {
           mainWindow.show();
           mainWindow.focus();
         }
+      }
+    });
+
+    tray.on('double-click', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
       }
     });
     console.log('[TRAY] System tray created successfully');
@@ -1295,6 +1265,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
       window: { title: "ElderSea RPG 1.20.1", width: 1280, height: 720 },
       javaPath: javaExecutable,
       customArgs: [
+        "-XX:-ShowMessageBoxOnError",
         "-DlibraryDirectory=" + libsDir,
         "-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,forge-,1.20.1-forge-47.4.20.jar",
         "-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar",
@@ -1310,13 +1281,53 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         "--add-exports", "jdk.naming.dns/com.sun.jndi.dns=java.naming"
       ]
     };
+
+    function getRecentCrashDetails(logsList = []) {
+      let logsText = logsList.slice(-150).join('\n');
+      let crashReport = null;
+      let crashReportPath = null;
+
+      const crashReportsDir = path.join(GAME_ROOT, 'crash-reports');
+      try {
+        if (fs.existsSync(crashReportsDir)) {
+          const files = fs.readdirSync(crashReportsDir)
+            .filter(f => f.startsWith('crash-') && f.endsWith('.txt'))
+            .map(f => {
+              const filePath = path.join(crashReportsDir, f);
+              const stat = fs.statSync(filePath);
+              return { name: f, path: filePath, mtime: stat.mtimeMs };
+            })
+            .sort((a, b) => b.mtime - a.mtime);
+
+          if (files.length > 0 && (Date.now() - files[0].mtime) < 300000) { // 5 minutes
+            crashReport = fs.readFileSync(files[0].path, 'utf8');
+            crashReportPath = files[0].path;
+          }
+        }
+      } catch (err) {
+        console.error("Error reading crash reports:", err);
+      }
+
+      if (logsText.length < 300) {
+        const latestLogPath = path.join(GAME_ROOT, 'logs', 'latest.log');
+        try {
+          if (fs.existsSync(latestLogPath)) {
+            const fullLog = fs.readFileSync(latestLogPath, 'utf8');
+            const lines = fullLog.split('\n');
+            logsText = lines.slice(-100).join('\n');
+          }
+        } catch (err) {}
+      }
+
+      return { logs: logsText, crashReport, crashReportPath };
+    }
     
     let gameStarted = false;
     let jvmLogs = [];
     launcher.on('data', (e) => {
         console.log("[JVM]", e);
         jvmLogs.push(e);
-        if (jvmLogs.length > 50) jvmLogs.shift();
+        if (jvmLogs.length > 200) jvmLogs.shift();
         
         appendToLogBuffer(e);
         
@@ -1343,13 +1354,33 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         console.error("[MCLC ERROR]", e);
         appendToLogBuffer(`[ERROR] ${e}`);
         if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('launch-error', e.toString());
+            const crashDetails = getRecentCrashDetails(jvmLogs);
+            const crashPayload = {
+              code: 'ERR_MCLC',
+              title: "Erreur de lancement Minecraft",
+              message: e.toString(),
+              logs: crashDetails.logs ? `${e.toString()}\n\n--- Derniers logs console ---\n${crashDetails.logs}` : e.toString(),
+              crashReport: crashDetails.crashReport,
+              crashReportPath: crashDetails.crashReportPath
+            };
+            mainWindow.webContents.send('game-crashed', crashPayload);
+            mainWindow.webContents.send('launch-error', crashPayload);
         }
     });
     
+    let globalMclcProgress = { type: 'Fichiers de jeu...', task: 0, total: 100 };
+
     launcher.on('progress', (e) => {
+      globalMclcProgress = {
+        type: e.type === 'assets' ? 'Ressources graphiques...' : e.type === 'natives' ? 'Bibliothèques système...' : 'Fichiers de jeu...',
+        task: e.task,
+        total: e.total
+      };
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('launch-progress', e);
+        mainWindow.webContents.send('launch-progress', {
+          ...globalMclcProgress,
+          filename: null
+        });
       }
       appendToLogBuffer(`[MCLC] Progression: ${e.type} (${e.task}/${e.total})`);
     });
@@ -1357,9 +1388,9 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     launcher.on('download-status', (e) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('launch-progress', {
-                type: e.type,
-                task: e.current,
-                total: e.total,
+                ...globalMclcProgress,
+                fileCurrent: e.current,
+                fileTotal: e.total,
                 filename: e.name
             });
         }
@@ -1389,8 +1420,17 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
             }
             
             if (code !== 0 && code !== null) {
-                const logsText = jvmLogs.join('\n');
-                mainWindow.webContents.send('launch-error', `Le jeu a planté (Code de sortie: ${code}).\n\nDernières lignes de la console :\n${logsText}`);
+                const crashDetails = getRecentCrashDetails(jvmLogs);
+                const crashPayload = {
+                  code,
+                  title: `Le jeu a planté (Code de sortie: ${code})`,
+                  message: `Le jeu s'est arrêté inopinément avec le code de sortie ${code}.`,
+                  logs: crashDetails.logs || jvmLogs.join('\n'),
+                  crashReport: crashDetails.crashReport,
+                  crashReportPath: crashDetails.crashReportPath
+                };
+                mainWindow.webContents.send('game-crashed', crashPayload);
+                mainWindow.webContents.send('launch-error', crashPayload);
                 appendToLogBuffer(`[FATAL] Le jeu a planté avec le code de sortie: ${code}`);
             } else {
                 appendToLogBuffer(`[MCLC] Le jeu s'est arrêté normalement.`);
@@ -1400,6 +1440,8 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
 
     console.log("[FORGE] Lancement du moteur...");
     appendToLogBuffer("[MCLC] Lancement final du moteur Minecraft...");
+    patchMinecraftAssetIcons();
+    applyMinecraftWindowIcon();
     await launcher.launch(opts);
     
   } catch (error) {
@@ -1415,7 +1457,15 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('game-status', false);
         console.error("[FATAL ERROR]", error);
-        mainWindow.webContents.send('launch-error', error.message);
+        const crashPayload = {
+          code: 'ERR_FATAL',
+          title: "Erreur critique de lancement",
+          message: error.message || error.toString(),
+          logs: error.stack || error.toString(),
+          crashReport: null
+        };
+        mainWindow.webContents.send('game-crashed', crashPayload);
+        mainWindow.webContents.send('launch-error', crashPayload);
     }
   }
 });
@@ -1469,53 +1519,197 @@ ipcMain.on('install-update', () => {
   autoUpdater.quitAndInstall();
 });
 
+function patchMinecraftAssetIcons() {
+  try {
+    const iconPath = getIconPath();
+    if (!fs.existsSync(iconPath)) return;
+
+    const baseIcon = nativeImage.createFromPath(iconPath);
+    if (baseIcon.isEmpty()) return;
+
+    const indexesDir = path.join(GAME_ROOT, 'assets', 'indexes');
+    const objectsDir = path.join(GAME_ROOT, 'assets', 'objects');
+    if (!fs.existsSync(indexesDir) || !fs.existsSync(objectsDir)) return;
+
+    const indexFiles = fs.readdirSync(indexesDir).filter(f => f.endsWith('.json'));
+    for (const file of indexFiles) {
+      try {
+        const indexPath = path.join(indexesDir, file);
+        const indexData = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+        if (!indexData || !indexData.objects) continue;
+
+        for (const [key, val] of Object.entries(indexData.objects)) {
+          if (typeof key === 'string' && key.includes('icon_') && key.endsWith('.png') && val && val.hash) {
+            const match = key.match(/(\d+)x(\d+)/);
+            const size = match ? parseInt(match[1], 10) : 32;
+            const targetSize = Math.max(16, Math.min(size, 256));
+
+            const resizedBuf = baseIcon.resize({ width: targetSize, height: targetSize }).toPNG();
+            const hashPrefix = val.hash.slice(0, 2);
+            const targetDir = path.join(objectsDir, hashPrefix);
+            const targetFile = path.join(targetDir, val.hash);
+
+            if (!fs.existsSync(targetDir)) {
+              fs.mkdirSync(targetDir, { recursive: true });
+            }
+            fs.writeFileSync(targetFile, resizedBuf);
+          }
+        }
+        console.log(`[ICON PATCH] Icônes d'assets Minecraft patchées avec succès (${file})`);
+      } catch (err) {
+        console.warn(`[ICON PATCH] Erreur lors du patch de l'index ${file}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[ICON PATCH ERROR]', err);
+  }
+}
+
 function applyMinecraftWindowIcon() {
   if (process.platform !== 'win32') return;
 
   const iconPath = getIconPath();
   if (!fs.existsSync(iconPath)) return;
 
+  patchMinecraftAssetIcons();
+
   const scriptPath = path.join(GAME_ROOT, 'apply-icon.ps1');
   const escapedIconPath = iconPath.replace(/'/g, "''");
 
   const psScript = `
-Add-Type -TypeDefinition '
-  using System;
-  using System.Runtime.InteropServices;
-  public class Win32Api {
-      [DllImport("user32.dll", SetLastError = true)]
-      public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-  }
-'
+Add-Type -TypeDefinition @"
+using System;
+using System.Text;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+public class Win32IconHelper {
+    public const uint WM_SETICON = 0x0080;
+    public const int ICON_SMALL = 0;
+    public const int ICON_BIG = 1;
+    public const int GCLP_HICON = -14;
+    public const int GCLP_HICONSM = -34;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", EntryPoint = "SetClassLongPtr")]
+    private static extern IntPtr SetClassLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll", EntryPoint = "SetClassLong")]
+    private static extern IntPtr SetClassLong32(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    public static IntPtr SetClassLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong) {
+        if (IntPtr.Size == 8)
+            return SetClassLongPtr64(hWnd, nIndex, dwNewLong);
+        else
+            return SetClassLong32(hWnd, nIndex, dwNewLong);
+    }
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern bool SetWindowText(IntPtr hWnd, string lpString);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    public static IntPtr[] FindMatchingWindows(uint[] pids) {
+        var list = new List<IntPtr>();
+        EnumWindows((hWnd, lParam) => {
+            if (!IsWindowVisible(hWnd)) return true;
+            uint pid = 0;
+            GetWindowThreadProcessId(hWnd, out pid);
+            
+            bool pidMatch = false;
+            if (pids != null) {
+                for (int i = 0; i < pids.Length; i++) {
+                    if (pids[i] == pid) {
+                        pidMatch = true;
+                        break;
+                    }
+                }
+            }
+            
+            StringBuilder sb = new StringBuilder(512);
+            GetWindowText(hWnd, sb, 512);
+            string title = sb.ToString();
+
+            if (pidMatch && !string.IsNullOrEmpty(title)) {
+                list.Add(hWnd);
+            } else if (!string.IsNullOrEmpty(title)) {
+                if (title.IndexOf("Minecraft", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    title.IndexOf("ElderSea", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    title.IndexOf("Forge", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    title.IndexOf("FML", StringComparison.OrdinalIgnoreCase) >= 0) {
+                    list.Add(hWnd);
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return list.ToArray();
+    }
+}
+"@
 Add-Type -AssemblyName System.Drawing
-Start-Sleep -Seconds 3
+
+$iconPath = '${escapedIconPath}'
+if (-not (Test-Path $iconPath)) { exit }
+
 try {
-    $bitmap = New-Object System.Drawing.Bitmap('${escapedIconPath}')
-    $hIcon = $bitmap.GetHicon()
-    for ($i = 0; $i -lt 40; $i++) {
-        $proc = Get-Process -Name 'javaw' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like '*ElderSea*' }
-        if ($proc) {
-            $hwnd = $proc.MainWindowHandle
-            if ($hwnd -ne [IntPtr]::Zero) {
-                [Win32Api]::SendMessage($hwnd, 0x0080, 0, $hIcon)
-                [Win32Api]::SendMessage($hwnd, 0x0080, 1, $hIcon)
+    $bmp = [System.Drawing.Bitmap]::FromFile($iconPath)
+    $bmpSmall = New-Object System.Drawing.Bitmap($bmp, 32, 32)
+    $bmpBig = New-Object System.Drawing.Bitmap($bmp, 128, 128)
+    $hIconSmall = $bmpSmall.GetHicon()
+    $hIconBig = $bmpBig.GetHicon()
+
+    $appliedCount = 0
+    for ($i = 0; $i -lt 90; $i++) {
+        $procs = Get-CimInstance Win32_Process -Filter "Name = 'javaw.exe' or Name = 'java.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*.eldersea*' -or $_.CommandLine -like '*forge*' }
+        $pids = [uint32[]]@($procs | ForEach-Object { [uint32]$_.ProcessId })
+
+        $windows = [Win32IconHelper]::FindMatchingWindows($pids)
+        if ($windows.Length -gt 0) {
+            foreach ($hwnd in $windows) {
+                [Win32IconHelper]::SendMessage($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_SMALL, $hIconSmall)
+                [Win32IconHelper]::SendMessage($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_BIG, $hIconBig)
+                [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICON, $hIconBig)
+                [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICONSM, $hIconSmall)
+                [Win32IconHelper]::SetWindowText($hwnd, "ElderSea RPG")
+                [Win32IconHelper]::SetWindowPos($hwnd, [IntPtr]::Zero, 0, 0, 0, 0, 0x0027)
+            }
+            $appliedCount++
+            if ($appliedCount -gt 25) {
                 break
             }
         }
-        Start-Sleep -Seconds 1
+        Start-Sleep -Milliseconds 1000
     }
 } catch {
     # Ignore errors
+} finally {
+    Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue
 }
-Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue
 `;
 
   try {
     fs.writeFileSync(scriptPath, psScript, 'utf8');
-    const cmd = `powershell -ExecutionPolicy Bypass -File "${scriptPath}"`;
+    const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`;
     exec(cmd, (err) => {
-      if (err) console.error('[ICON ERROR] Failed to run icon script:', err);
-      else console.log('[ICON] Custom icon applied successfully!');
+      if (err) console.error('[ICON ERROR] Failed to run icon script:', err.message);
+      else console.log('[ICON] Custom icon watcher completed successfully.');
     });
   } catch (err) {
     console.error('[ICON ERROR] Failed to write icon script:', err);
@@ -1524,7 +1718,7 @@ Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue
 
 // ── Friends & Chat System ──
 const FRIENDS_DB_PATH = path.join(GAME_ROOT, 'friends_database.json');
-const CLOUD_FRIENDS_URL = 'https://jsonblob.com/api/jsonBlob/019faa7e-8112-7c0d-a2f9-975eea215760';
+const CLOUD_FRIENDS_URL = 'https://eldersea.tekao.fr/api/friends';
 
 function getLocalFriendsData() {
   try {

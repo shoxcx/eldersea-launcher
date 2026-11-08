@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSettingsStore, useAuthStore } from '../store/useStore';
 import { translations } from '../translations';
-import { Home, Package, Camera, ShoppingBag, Settings, User, ChevronDown, LogOut, ChevronUp, Map, Users } from 'lucide-react';
+import { Home, Package, Camera, ShoppingBag, Settings, User, ChevronDown, LogOut, ChevronUp, Users } from 'lucide-react';
 import packageJson from '../../package.json';
 
 const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfileOpen, onToggleProfile, setActiveChatFriend, onInspectUser }) => {
@@ -33,7 +33,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
       }
     } else {
       try {
-        const res = await fetch('https://jsonblob.com/api/jsonBlob/019faa7e-8112-7c0d-a2f9-975eea215760');
+        const res = await fetch('https://eldersea.tekao.fr/api/friends');
         if (res.ok) data = await res.json();
       } catch (e) {
         console.error("Failed web fallback sidebar friends load:", e);
@@ -76,7 +76,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
       setSidebarFriends(list);
     }
     try {
-      const res = await fetch('https://eldersea.tekao.fr/api/api/users');
+      const res = await fetch('https://eldersea.tekao.fr/api/users');
       if (res.ok) {
         const users = await res.json();
         setApiUsers(users);
@@ -142,7 +142,6 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
   const menuItems = [
     { id: 'home', label: t.home, icon: <Home size={18} /> },
     { id: 'screenshots', label: t.captures, icon: <Camera size={18} /> },
-    { id: 'map', label: t.map, icon: <Map size={18} />, special: 'nav-map' },
     { id: 'shop', label: t.shop, icon: <ShoppingBag size={18} />, special: 'nav-shop' },
   ];
 

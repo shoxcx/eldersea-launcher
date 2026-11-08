@@ -108,17 +108,44 @@ const SettingsModal = ({ onClose }) => {
 
               <div className="setting-row">
                 <div className="setting-label"><Monitor size={14} /> {t.startup}</div>
-                <input type="checkbox" checked={launchOnStartup} onChange={(e) => setLaunchOnStartup(e.target.checked)} className="setting-toggle" />
+                <input 
+                  type="checkbox" 
+                  checked={launchOnStartup} 
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    setLaunchOnStartup(val);
+                    if (window.ipcRenderer) window.ipcRenderer.send('set-launch-on-startup', val);
+                  }} 
+                  className="setting-toggle" 
+                />
               </div>
 
               <div className="setting-row">
                 <div className="setting-label"><Monitor size={14} /> {t.bg_mode}</div>
-                <input type="checkbox" checked={backgroundMode} onChange={(e) => setBackgroundMode(e.target.checked)} className="setting-toggle" />
+                <input 
+                  type="checkbox" 
+                  checked={backgroundMode} 
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    setBackgroundMode(val);
+                    if (window.ipcRenderer) window.ipcRenderer.send('set-background-mode', val);
+                  }} 
+                  className="setting-toggle" 
+                />
               </div>
 
               <div className="setting-row">
                 <div className="setting-label"><Monitor size={14} /> {t.show_console}</div>
-                <input type="checkbox" checked={showConsole} onChange={(e) => setShowConsole(e.target.checked)} className="setting-toggle" />
+                <input 
+                  type="checkbox" 
+                  checked={showConsole} 
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    setShowConsole(val);
+                    if (window.ipcRenderer) window.ipcRenderer.send('set-show-console', val);
+                  }} 
+                  className="setting-toggle" 
+                />
               </div>
 
               <div className="setting-group" style={{ borderTop: '1px solid var(--border)', paddingTop: '20px', marginTop: '10px' }}>
