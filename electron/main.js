@@ -1826,30 +1826,31 @@ function saveLocalFriendsData(data) {
 }
 
 async function fetchCloudFriendsData() {
-  const candidateUrls = [
-    'https://eldersea.tekao.fr/api/friends',
-    'https://eldersea.tekao.fr/friends'
-  ];
-
-  for (const url of candidateUrls) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && typeof data === 'object') {
-          if (!Array.isArray(data.requests)) data.requests = [];
-          if (!Array.isArray(data.friends)) data.friends = [];
-          if (!Array.isArray(data.messages)) data.messages = [];
-          saveLocalFriendsData(data);
-          return data;
-        }
+  const url = 'https://eldersea.tekao.fr/api/friends';
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  try {
+    const res = await fetch(url, { 
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json' }
+    });
+    clearTimeout(timeoutId);
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.includes('application/json')) {
+      const data = await res.json();
+      if (data && typeof data === 'object') {
+        if (!Array.isArray(data.requests)) data.requests = [];
+        if (!Array.isArray(data.friends)) data.friends = [];
+        if (!Array.isArray(data.messages)) data.messages = [];
+        saveLocalFriendsData(data);
+        return data;
       }
-    } catch (e) {
-      clearTimeout(timeoutId);
+    } else {
+      console.warn('[FRIENDS CLOUD FETCH] Réponse non-JSON ou non-OK:', res.status, ct);
     }
+  } catch (e) {
+    clearTimeout(timeoutId);
+    console.warn('[FRIENDS CLOUD FETCH ERROR]', e.message);
   }
 
   return getLocalFriendsData();
@@ -1857,27 +1858,28 @@ async function fetchCloudFriendsData() {
 
 async function pushCloudFriendsData(data) {
   saveLocalFriendsData(data);
-  const candidateUrls = [
-    'https://eldersea.tekao.fr/api/friends',
-    'https://eldersea.tekao.fr/friends'
-  ];
-
-  for (const url of candidateUrls) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-    try {
-      const res = await fetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(data),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      if (res.ok) return true;
-    } catch (e) {
-      clearTimeout(timeoutId);
+  const url = 'https://eldersea.tekao.fr/api/friends';
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(data),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      console.log('[FRIENDS CLOUD PUSH] Données synchronisées sur le serveur cloud.');
+      return true;
+    } else {
+      console.warn('[FRIENDS CLOUD PUSH] Échec HTTP:', res.status);
     }
+  } catch (e) {
+    clearTimeout(timeoutId);
+    console.warn('[FRIENDS CLOUD PUSH ERROR]', e.message);
   }
+  return false;
 }
 
 ipcMain.handle('friends-get-data', async () => {

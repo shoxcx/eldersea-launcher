@@ -350,13 +350,16 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       }
     } else {
       try {
-        const res = await fetch('https://eldersea.tekao.fr/api/friends');
+        const res = await fetch('https://eldersea.tekao.fr/api/friends', { headers: { 'Accept': 'application/json' } });
         if (res.ok) {
-          const data = await res.json();
-          if (!Array.isArray(data.requests)) data.requests = [];
-          if (!Array.isArray(data.friends)) data.friends = [];
-          if (!Array.isArray(data.messages)) data.messages = [];
-          setFriendsData(data);
+          const ct = res.headers.get('content-type') || '';
+          if (ct.includes('application/json')) {
+            const data = await res.json();
+            if (!Array.isArray(data.requests)) data.requests = [];
+            if (!Array.isArray(data.friends)) data.friends = [];
+            if (!Array.isArray(data.messages)) data.messages = [];
+            setFriendsData(data);
+          }
         }
       } catch (err) {
         console.error("Failed to load web friends data:", err);
@@ -462,9 +465,11 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
 
   const performWebAction = async (actionType, targetUser, text = '') => {
     try {
-      const CLOUD_URL = 'https://jsonblob.com/api/jsonBlob/019faa7e-8112-7c0d-a2f9-975eea215760';
-      const getRes = await fetch(CLOUD_URL);
+      const CLOUD_URL = 'https://eldersea.tekao.fr/api/friends';
+      const getRes = await fetch(CLOUD_URL, { headers: { 'Accept': 'application/json' } });
       if (!getRes.ok) return null;
+      const ct = getRes.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) return null;
       const db = await getRes.json();
       if (!Array.isArray(db.requests)) db.requests = [];
       if (!Array.isArray(db.friends)) db.friends = [];
