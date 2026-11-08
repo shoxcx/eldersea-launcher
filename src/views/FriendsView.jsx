@@ -350,15 +350,35 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       }
     } else {
       try {
-        const res = await fetch('https://eldersea.tekao.fr/api/friends', { headers: { 'Accept': 'application/json' } });
-        if (res.ok) {
+        let loaded = false;
+        try {
+          const res = await fetch('https://eldersea.tekao.fr/api/friends', { headers: { 'Accept': 'application/json' } });
           const ct = res.headers.get('content-type') || '';
-          if (ct.includes('application/json')) {
+          if (res.ok && ct.includes('application/json')) {
             const data = await res.json();
-            if (!Array.isArray(data.requests)) data.requests = [];
-            if (!Array.isArray(data.friends)) data.friends = [];
-            if (!Array.isArray(data.messages)) data.messages = [];
-            setFriendsData(data);
+            if (data && typeof data === 'object') {
+              if (!Array.isArray(data.requests)) data.requests = [];
+              if (!Array.isArray(data.friends)) data.friends = [];
+              if (!Array.isArray(data.messages)) data.messages = [];
+              setFriendsData(data);
+              loaded = true;
+            }
+          }
+        } catch (e) {}
+
+        if (!loaded) {
+          const sysRes = await fetch('https://eldersea.tekao.fr/api/users/12');
+          if (sysRes.ok) {
+            const user = await sysRes.json();
+            if (user && user.bio) {
+              const data = JSON.parse(user.bio);
+              if (data && typeof data === 'object') {
+                if (!Array.isArray(data.requests)) data.requests = [];
+                if (!Array.isArray(data.friends)) data.friends = [];
+                if (!Array.isArray(data.messages)) data.messages = [];
+                setFriendsData(data);
+              }
+            }
           }
         }
       } catch (err) {
@@ -370,7 +390,9 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       const res = await fetch('https://eldersea.tekao.fr/api/users');
       if (res.ok) {
         const users = await res.json();
-        setAllApiUsers(users);
+        if (Array.isArray(users)) {
+          setAllApiUsers(users.filter(u => u && u.pseudo && u.pseudo !== 'ElderSea_System'));
+        }
       }
     } catch (err) {
       console.error("Failed to fetch API users:", err);
@@ -465,12 +487,28 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
 
   const performWebAction = async (actionType, targetUser, text = '') => {
     try {
-      const CLOUD_URL = 'https://eldersea.tekao.fr/api/friends';
-      const getRes = await fetch(CLOUD_URL, { headers: { 'Accept': 'application/json' } });
-      if (!getRes.ok) return null;
-      const ct = getRes.headers.get('content-type') || '';
-      if (!ct.includes('application/json')) return null;
-      const db = await getRes.json();
+      let db = null;
+      try {
+        const getRes = await fetch('https://eldersea.tekao.fr/api/friends', { headers: { 'Accept': 'application/json' } });
+        const ct = getRes.headers.get('content-type') || '';
+        if (getRes.ok && ct.includes('application/json')) {
+          db = await getRes.json();
+        }
+      } catch (e) {}
+
+      if (!db) {
+        try {
+          const sysRes = await fetch('https://eldersea.tekao.fr/api/users/12');
+          if (sysRes.ok) {
+            const user = await sysRes.json();
+            if (user && user.bio) db = JSON.parse(user.bio);
+          }
+        } catch (e) {}
+      }
+
+      if (!db || typeof db !== 'object') {
+        db = { requests: [], friends: [], messages: [] };
+      }
       if (!Array.isArray(db.requests)) db.requests = [];
       if (!Array.isArray(db.friends)) db.friends = [];
       if (!Array.isArray(db.messages)) db.messages = [];
@@ -538,11 +576,22 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
         if (db.messages.length > 1000) db.messages = db.messages.slice(db.messages.length - 1000);
       }
 
-      await fetch(CLOUD_URL, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(db)
-      });
+      try {
+        await fetch('https://eldersea.tekao.fr/api/friends', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(db)
+        });
+      } catch (e) {}
+
+      try {
+        await fetch('https://eldersea.tekao.fr/api/users/12', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bio: JSON.stringify(db) })
+        });
+      } catch (e) {}
+
       return db;
     } catch (err) {
       console.error("Web action failed:", err);

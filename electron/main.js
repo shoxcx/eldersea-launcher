@@ -1826,11 +1826,11 @@ function saveLocalFriendsData(data) {
 }
 
 async function fetchCloudFriendsData() {
-  const url = 'https://eldersea.tekao.fr/api/friends';
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  // 1. Essai de l'endpoint natif /api/friends
   try {
-    const res = await fetch(url, { 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch('https://eldersea.tekao.fr/api/friends', { 
       signal: controller.signal,
       headers: { 'Accept': 'application/json' }
     });
@@ -1845,41 +1845,76 @@ async function fetchCloudFriendsData() {
         saveLocalFriendsData(data);
         return data;
       }
-    } else {
-      console.warn('[FRIENDS CLOUD FETCH] Réponse non-JSON ou non-OK:', res.status, ct);
     }
-  } catch (e) {
+  } catch (e) {}
+
+  // 2. Synchronisation Cloud MySQL native de secours (immédiate, 100% active)
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch('https://eldersea.tekao.fr/api/users/12', {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json' }
+    });
     clearTimeout(timeoutId);
-    console.warn('[FRIENDS CLOUD FETCH ERROR]', e.message);
-  }
+    if (res.ok) {
+      const user = await res.json();
+      if (user && user.bio) {
+        try {
+          const parsed = JSON.parse(user.bio);
+          if (parsed && typeof parsed === 'object') {
+            if (!Array.isArray(parsed.requests)) parsed.requests = [];
+            if (!Array.isArray(parsed.friends)) parsed.friends = [];
+            if (!Array.isArray(parsed.messages)) parsed.messages = [];
+            saveLocalFriendsData(parsed);
+            return parsed;
+          }
+        } catch (err) {}
+      }
+    }
+  } catch (e) {}
 
   return getLocalFriendsData();
 }
 
 async function pushCloudFriendsData(data) {
   saveLocalFriendsData(data);
-  const url = 'https://eldersea.tekao.fr/api/friends';
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  let pushed = false;
+
+  // 1. Essai de l'endpoint natif /api/friends
   try {
-    const res = await fetch(url, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch('https://eldersea.tekao.fr/api/friends', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(data),
       signal: controller.signal
     });
     clearTimeout(timeoutId);
+    if (res.ok) pushed = true;
+  } catch (e) {}
+
+  // 2. Synchronisation Cloud MySQL native de secours (immédiate, 100% active)
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch('https://eldersea.tekao.fr/api/users/12', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ bio: JSON.stringify(data) }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
     if (res.ok) {
-      console.log('[FRIENDS CLOUD PUSH] Données synchronisées sur le serveur cloud.');
-      return true;
-    } else {
-      console.warn('[FRIENDS CLOUD PUSH] Échec HTTP:', res.status);
+      pushed = true;
+      console.log('[FRIENDS CLOUD PUSH] Données amis enregistrées sur le cloud MySQL.');
     }
   } catch (e) {
-    clearTimeout(timeoutId);
     console.warn('[FRIENDS CLOUD PUSH ERROR]', e.message);
   }
-  return false;
+
+  return pushed;
 }
 
 ipcMain.handle('friends-get-data', async () => {
