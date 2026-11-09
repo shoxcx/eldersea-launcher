@@ -6,73 +6,7 @@ import { Users, UserPlus, Inbox, MessageSquare, Send, Trash2, Check, X, Circle, 
 
 const EMOJIS = ['😄', '😂', '😭', '😡', '😱', '👍', '🔥', '🎉', '❤️', '🤔', '👑', '🏴‍☠️', '⚓', '🌊', '⚔️', '💎', '🗺️', '☠️', '🦜', '🪙'];
 
-const curatedGifs = [
-  {
-    url: 'https://media.giphy.com/media/1tHzw9PXXf7Ww/giphy.gif',
-    tags: ['minecraft', 'steve', 'danse', 'dance', 'fun', 'funny', 'drole'],
-    category: 'Minecraft'
-  },
-  {
-    url: 'https://media.giphy.com/media/rYV80F954goDu/giphy.gif',
-    tags: ['minecraft', 'creeper', 'boom', 'explosion', 'colere', 'angry'],
-    category: 'Minecraft'
-  },
-  {
-    url: 'https://media.giphy.com/media/qj6XMcl5GQgIE/giphy.gif',
-    tags: ['minecraft', 'steve', 'mine', 'diamant', 'diamond', 'travail'],
-    category: 'Minecraft'
-  },
-  {
-    url: 'https://media.giphy.com/media/3x1e2yRjK9aK0/giphy.gif',
-    tags: ['minecraft', 'squelette', 'skeleton', 'combat', 'attack'],
-    category: 'Minecraft'
-  },
-  {
-    url: 'https://media.giphy.com/media/2PmMiUc9OH4l2/giphy.gif',
-    tags: ['pirate', 'bateau', 'ship', 'mer', 'sea', 'aventure'],
-    category: 'Pirates'
-  },
-  {
-    url: 'https://media.giphy.com/media/o0eOCNknADc4JTz08w/giphy.gif',
-    tags: ['pirate', 'jack sparrow', 'capitaine', 'hello', 'salut', 'aye'],
-    category: 'Pirates'
-  },
-  {
-    url: 'https://media.giphy.com/media/10X22vczHT1Ot2/giphy.gif',
-    tags: ['pirate', 'rire', 'laugh', 'drole', 'funny', 'fun'],
-    category: 'Pirates'
-  },
-  {
-    url: 'https://media.giphy.com/media/l41JRsPh73mFPADYs/giphy.gif',
-    tags: ['pirate', 'combat', 'epee', 'sword', 'fight'],
-    category: 'Pirates'
-  },
-  {
-    url: 'https://media.giphy.com/media/3o7TKMt1VsiptXWRTKM/giphy.gif',
-    tags: ['pirate', 'carte', 'map', 'tresor', 'treasure'],
-    category: 'Pirates'
-  },
-  {
-    url: 'https://media.giphy.com/media/t3mzJQ2NHxJVy4wygZ/giphy.gif',
-    tags: ['rire', 'laugh', 'ha', 'fun', 'funny', 'drole'],
-    category: 'Réactions'
-  },
-  {
-    url: 'https://media.giphy.com/media/l3q2XhfQ8oCkm1K76/giphy.gif',
-    tags: ['applaudissements', 'bravo', 'clap', 'win', 'gg'],
-    category: 'Réactions'
-  },
-  {
-    url: 'https://media.giphy.com/media/3o7abKhOpu0NXS3HBC/giphy.gif',
-    tags: ['pleure', 'triste', 'sad', 'cry', 'no'],
-    category: 'Réactions'
-  },
-  {
-    url: 'https://media.giphy.com/media/9PMC8BD8bKfDxG6AEh/giphy.gif',
-    tags: ['choc', 'shock', 'wow', 'omg', 'surprise'],
-    category: 'Réactions'
-  }
-];
+import popularGifs from '../data/popularGifs.json';
 
 const cleanGiphyUrl = (url) => {
   if (typeof url !== 'string') return url;
@@ -207,6 +141,12 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
 
   // Friends & Chat data from IPC
   const [friendsData, setFriendsData] = useState({ requests: [], friends: [], messages: [] });
+  const updateFriendsData = (newData) => {
+    if (newData && typeof newData === 'object') {
+      setFriendsData(newData);
+      window.dispatchEvent(new CustomEvent('friends-data-updated', { detail: newData }));
+    }
+  };
   
   // Real users data fetched from ElderSea SQL API (to verify users and check online status/rank/balance)
   const [allApiUsers, setAllApiUsers] = useState([]);
@@ -221,12 +161,94 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [gifSearchQuery, setGifSearchQuery] = useState('');
-  const [activeGifCategory, setActiveGifCategory] = useState('All');
+  const [activeGifCategory, setActiveGifCategory] = useState('Populaire');
+  const [customGifUrl, setCustomGifUrl] = useState('');
+  const [customGifError, setCustomGifError] = useState('');
+  const [gifDisplayLimit, setGifDisplayLimit] = useState(40);
+  const [liveGifs, setLiveGifs] = useState([]);
+  const [isSearchingLive, setIsSearchingLive] = useState(false);
 
-  // GIPHY API states
-  const [giphyGifs, setGiphyGifs] = useState([]);
-  const [loadingGifs, setLoadingGifs] = useState(false);
-  const [debouncedGifQuery, setDebouncedGifQuery] = useState('');
+  // Reset pagination limit on filter change
+  useEffect(() => {
+    setGifDisplayLimit(40);
+  }, [activeGifCategory, gifSearchQuery]);
+
+  // Live Tenor search via Electron IPC
+  useEffect(() => {
+    const q = (gifSearchQuery || '').trim();
+    if (!q || q.length < 2) {
+      setLiveGifs([]);
+      setIsSearchingLive(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      if (window.ipcRenderer) {
+        setIsSearchingLive(true);
+        try {
+          const results = await window.ipcRenderer.invoke('search-gifs', q);
+          if (Array.isArray(results) && results.length > 0) {
+            setLiveGifs(results);
+          }
+        } catch (e) {
+          console.error("Live gif search failed:", e);
+        } finally {
+          setIsSearchingLive(false);
+        }
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [gifSearchQuery]);
+
+  const getFilteredGifs = () => {
+    const q = (gifSearchQuery || '').toLowerCase().trim();
+    const source = liveGifs.length > 0 && q ? [...liveGifs, ...popularGifs] : popularGifs;
+    const seen = new Set();
+    return source.filter(gif => {
+      if (!gif || !gif.url || seen.has(gif.url)) return false;
+      seen.add(gif.url);
+      let matchesCat = true;
+      if (activeGifCategory !== 'Tous') {
+        matchesCat = (gif.category || '').toLowerCase() === activeGifCategory.toLowerCase();
+      }
+      if (!matchesCat) return false;
+      if (!q) return true;
+      return (
+        (gif.category || '').toLowerCase().includes(q) ||
+        (Array.isArray(gif.tags) && gif.tags.some(t => t.toLowerCase().includes(q)))
+      );
+    });
+  };
+
+  const handleSendCustomGif = (e) => {
+    if (e) e.preventDefault();
+    const url = customGifUrl.trim();
+    if (!url) return;
+
+    const blocked = ['nsfw', 'porn', 'xxx', 'hentai', 'nude', 'sexy', 'boobs', 'penis', 'erotic', 'r18', 'gore', 'blood', 'lewd', 'rule34', 'ecchi', 'sex'];
+    const lower = url.toLowerCase();
+    if (blocked.some(b => lower.includes(b))) {
+      setCustomGifError('Contenu inapproprié ou non sécurisé interdit.');
+      setTimeout(() => setCustomGifError(''), 4000);
+      return;
+    }
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      setCustomGifError('Le lien doit débuter par http:// ou https://');
+      setTimeout(() => setCustomGifError(''), 4000);
+      return;
+    }
+
+    if (!isMediaOnly(url)) {
+      setCustomGifError('Le lien doit être une image ou un GIF (.gif, .webp, giphy...)');
+      setTimeout(() => setCustomGifError(''), 4000);
+      return;
+    }
+
+    setCustomGifError('');
+    setCustomGifUrl('');
+    setShowGifPicker(false);
+    sendDirectMessage(url);
+  };
 
   // Custom Emojis states
   const [customEmojis, setCustomEmojis] = useState([]);
@@ -274,110 +296,31 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
     return () => { isMounted = false; };
   }, []);
 
-  // Debounce search query for GIPHY
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedGifQuery(gifSearchQuery);
-    }, 400);
-    return () => clearTimeout(handler);
-  }, [gifSearchQuery]);
 
-  // Fetch GIFs from GIPHY API
-  useEffect(() => {
-    if (!showGifPicker) return;
-
-    let isMounted = true;
-    setLoadingGifs(true);
-
-    let url = '';
-    const q = debouncedGifQuery.trim();
-
-    if (q) {
-      url = `https://giphy.com/api/v1/proxy/gifs/search?q=${encodeURIComponent(q)}&limit=50`;
-    } else {
-      if (activeGifCategory === 'All') {
-        url = `https://giphy.com/api/v1/proxy/gifs/trending?limit=50`;
-      } else {
-        const queryMap = {
-          'Minecraft': 'minecraft',
-          'Pirates': 'pirate',
-          'Réactions': 'reaction'
-        };
-        const searchQ = queryMap[activeGifCategory] || activeGifCategory;
-        url = `https://giphy.com/api/v1/proxy/gifs/search?q=${encodeURIComponent(searchQ)}&limit=50`;
-      }
-    }
-
-    fetch(url)
-      .then(res => res.json())
-      .then(data => {
-        if (isMounted && data && Array.isArray(data.data)) {
-          const formatted = data.data.map(item => ({
-            id: item.id,
-            url: `https://media.giphy.com/media/${item.id}/200.gif`,
-            title: item.title
-          }));
-          setGiphyGifs(formatted);
-        }
-        if (isMounted) setLoadingGifs(false);
-      })
-      .catch(err => {
-        console.error("Giphy API error:", err);
-        if (isMounted) {
-          // Fallback to curated if API fails
-          setGiphyGifs(curatedGifs.map(g => ({
-            id: g.url.split('/').pop().replace('.gif', ''),
-            url: g.url,
-            title: g.tags.join(' ')
-          })));
-          setLoadingGifs(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [showGifPicker, activeGifCategory, debouncedGifQuery]);
 
   // Load friends database state & API users
   const loadData = async () => {
     if (window.ipcRenderer) {
       try {
         const data = await window.ipcRenderer.invoke('friends-get-data');
-        setFriendsData(data);
+        if (data && typeof data === 'object') {
+          updateFriendsData(data);
+        }
       } catch (err) {
         console.error("Failed to load friends data:", err);
       }
     } else {
       try {
-        let loaded = false;
-        try {
-          const res = await fetch('https://eldersea.tekao.fr/api/friends', { headers: { 'Accept': 'application/json' } });
-          const ct = res.headers.get('content-type') || '';
-          if (res.ok && ct.includes('application/json')) {
-            const data = await res.json();
+        const sysRes = await fetch('https://eldersea.tekao.fr/api/users/12');
+        if (sysRes.ok) {
+          const userObj = await sysRes.json();
+          if (userObj && userObj.bio) {
+            const data = JSON.parse(userObj.bio);
             if (data && typeof data === 'object') {
               if (!Array.isArray(data.requests)) data.requests = [];
               if (!Array.isArray(data.friends)) data.friends = [];
               if (!Array.isArray(data.messages)) data.messages = [];
-              setFriendsData(data);
-              loaded = true;
-            }
-          }
-        } catch (e) {}
-
-        if (!loaded) {
-          const sysRes = await fetch('https://eldersea.tekao.fr/api/users/12');
-          if (sysRes.ok) {
-            const user = await sysRes.json();
-            if (user && user.bio) {
-              const data = JSON.parse(user.bio);
-              if (data && typeof data === 'object') {
-                if (!Array.isArray(data.requests)) data.requests = [];
-                if (!Array.isArray(data.friends)) data.friends = [];
-                if (!Array.isArray(data.messages)) data.messages = [];
-                setFriendsData(data);
-              }
+              updateFriendsData(data);
             }
           }
         }
@@ -422,15 +365,15 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
   // Parse friendships
   const getFriendsList = () => {
     const list = [];
-    const curL = (currentPseudo || '').toLowerCase();
+    const curL = (currentPseudo || '').toLowerCase().trim();
     if (!curL || !Array.isArray(friendsData?.friends)) return list;
     friendsData.friends.forEach(f => {
-      if (!f || !f.user1 || !f.user2) return;
-      const u1L = f.user1.toLowerCase();
-      const u2L = f.user2.toLowerCase();
-      if (u1L === curL) {
+      if (!f) return;
+      const u1 = (f.user1 || '').toLowerCase().trim();
+      const u2 = (f.user2 || '').toLowerCase().trim();
+      if (u1 === curL && f.user2 && !list.some(p => p.toLowerCase() === u2)) {
         list.push(f.user2);
-      } else if (u2L === curL) {
+      } else if (u2 === curL && f.user1 && !list.some(p => p.toLowerCase() === u1)) {
         list.push(f.user1);
       }
     });
@@ -439,23 +382,33 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
 
   // Retrieve incoming requests (where `to === currentPseudo`)
   const getIncomingRequests = () => {
-    const curL = (currentPseudo || '').toLowerCase();
+    const curL = (currentPseudo || '').toLowerCase().trim();
     if (!curL || !Array.isArray(friendsData?.requests)) return [];
-    return friendsData.requests.filter(r => r && r.to && r.to.toLowerCase() === curL);
+    return friendsData.requests.filter(r => r && r.to && r.to.toLowerCase().trim() === curL);
   };
 
   // Retrieve outgoing requests (where `from === currentPseudo`)
   const getOutgoingRequests = () => {
-    const curL = (currentPseudo || '').toLowerCase();
+    const curL = (currentPseudo || '').toLowerCase().trim();
     if (!curL || !Array.isArray(friendsData?.requests)) return [];
-    return friendsData.requests.filter(r => r && r.from && r.from.toLowerCase() === curL);
+    return friendsData.requests.filter(r => r && r.from && r.from.toLowerCase().trim() === curL);
   };
 
   // Cross-reference target user details from API users database
   const getUserDetails = (pseudo) => {
-    if (!pseudo) return null;
-    const found = allApiUsers.find(u => u.pseudo && u.pseudo.toLowerCase() === pseudo.toLowerCase());
-    const defaultAvatar = `https://minotar.net/avatar/${pseudo}/64`;
+    const defaultAvatar = `https://minotar.net/avatar/${pseudo || 'steve'}/64`;
+    const fallback = {
+      online: false,
+      lastActive: null,
+      rank: 'Joueur',
+      balance: 0,
+      avatar: defaultAvatar,
+      email: '',
+      thallis: 0
+    };
+    if (!pseudo) return fallback;
+    const cleanPseudo = String(pseudo).trim().toLowerCase();
+    const found = allApiUsers.find(u => u && u.pseudo && u.pseudo.toLowerCase().trim() === cleanPseudo);
     let avatarUrl = defaultAvatar;
     if (found && found.avatar && typeof found.avatar === 'string' && (found.avatar.startsWith('http://') || found.avatar.startsWith('https://'))) {
       avatarUrl = found.avatar;
@@ -470,41 +423,23 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
         rank: found.rank || 'Joueur',
         balance: found.balance || 0,
         avatar: avatarUrl,
-        email: found.email,
+        email: found.email || '',
         thallis: found.thallis || 0
       };
     }
-    return {
-      online: false,
-      lastActive: null,
-      rank: 'Joueur',
-      balance: 0,
-      avatar: defaultAvatar,
-      email: '',
-      thallis: 0
-    };
+    return fallback;
   };
 
   const performWebAction = async (actionType, targetUser, text = '') => {
     try {
       let db = null;
       try {
-        const getRes = await fetch('https://eldersea.tekao.fr/api/friends', { headers: { 'Accept': 'application/json' } });
-        const ct = getRes.headers.get('content-type') || '';
-        if (getRes.ok && ct.includes('application/json')) {
-          db = await getRes.json();
+        const sysRes = await fetch('https://eldersea.tekao.fr/api/users/12');
+        if (sysRes.ok) {
+          const user = await sysRes.json();
+          if (user && user.bio) db = JSON.parse(user.bio);
         }
       } catch (e) {}
-
-      if (!db) {
-        try {
-          const sysRes = await fetch('https://eldersea.tekao.fr/api/users/12');
-          if (sysRes.ok) {
-            const user = await sysRes.json();
-            if (user && user.bio) db = JSON.parse(user.bio);
-          }
-        } catch (e) {}
-      }
 
       if (!db || typeof db !== 'object') {
         db = { requests: [], friends: [], messages: [] };
@@ -577,14 +512,6 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       }
 
       try {
-        await fetch('https://eldersea.tekao.fr/api/friends', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify(db)
-        });
-      } catch (e) {}
-
-      try {
         await fetch('https://eldersea.tekao.fr/api/users/12', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -654,7 +581,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       } else {
         updated = await performWebAction('send-request', targetPseudo);
       }
-      if (updated) setFriendsData(updated);
+      if (updated) updateFriendsData(updated);
       setSearchStatus({ type: 'success', msg: t.friend_request_sent });
       setSearchPseudo('');
     } catch (err) {
@@ -675,7 +602,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       } else {
         updated = await performWebAction('accept-request', targetUser);
       }
-      if (updated) setFriendsData(updated);
+      if (updated) updateFriendsData(updated);
     } catch (err) {
       console.error("Accept request failed:", err);
     }
@@ -694,7 +621,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       } else {
         updated = await performWebAction('decline-request', targetUser);
       }
-      if (updated) setFriendsData(updated);
+      if (updated) updateFriendsData(updated);
     } catch (err) {
       console.error("Decline request failed:", err);
     }
@@ -713,7 +640,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       } else {
         updated = await performWebAction('cancel-request', targetUser);
       }
-      if (updated) setFriendsData(updated);
+      if (updated) updateFriendsData(updated);
     } catch (err) {
       console.error("Cancel request failed:", err);
     }
@@ -776,7 +703,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       } else {
         updated = await performWebAction('delete-friend', targetUser);
       }
-      if (updated) setFriendsData(updated);
+      if (updated) updateFriendsData(updated);
       if (activeChatFriend === targetUser) {
         setActiveChatFriend(null);
       }
@@ -798,7 +725,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       } else {
         updated = await performWebAction('send-message', activeChatFriend, text.trim());
       }
-      if (updated) setFriendsData(updated);
+      if (updated) updateFriendsData(updated);
     } catch (err) {
       console.error("Failed to send message:", err);
     }
@@ -1338,6 +1265,233 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
 
 
 
+                {/* Floating GIF Picker */}
+                {showGifPicker && (
+                  <div 
+                    ref={gifPickerRef}
+                    style={{
+                      position: 'absolute',
+                      bottom: '75px',
+                      right: '25px',
+                      width: '380px',
+                      maxHeight: '460px',
+                      background: 'rgba(15, 12, 30, 0.98)',
+                      backdropFilter: 'blur(15px)',
+                      border: '1px solid var(--border-bright)',
+                      borderRadius: '12px',
+                      padding: '14px',
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+                      zIndex: 100,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px'
+                    }}
+                  >
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Image size={15} color="var(--purple-light)" />
+                        <span className="cinzel" style={{ fontSize: '11px', color: 'var(--crystal)', letterSpacing: '1px', fontWeight: 'bold' }}>
+                          GIFs Populaires & Tendances ({popularGifs.length}+)
+                        </span>
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={() => setShowGifPicker(false)} 
+                        style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0 }}
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+
+                    {/* Search Input */}
+                    <div style={{ position: 'relative' }}>
+                      <input 
+                        type="text" 
+                        placeholder="Rechercher parmi les GIFs (ex: chat, danse, gg, anime...)" 
+                        value={gifSearchQuery}
+                        onChange={(e) => setGifSearchQuery(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '7px 12px',
+                          fontSize: '11px',
+                          borderRadius: '6px',
+                          background: 'rgba(0,0,0,0.35)',
+                          border: '1px solid var(--border)',
+                          color: '#fff',
+                          outline: 'none'
+                        }}
+                      />
+                      {isSearchingLive && (
+                        <span style={{ position: 'absolute', right: '10px', top: '7px', fontSize: '10px', color: 'var(--purple-light)' }}>
+                          Recherche web...
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Category Tabs */}
+                    <div style={{ display: 'flex', gap: '5px', overflowX: 'auto', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      {['Populaire', 'Tous', 'Minecraft', 'Pirates', 'Gaming', 'Réactions', 'Fun'].map(tab => (
+                        <button
+                          key={tab}
+                          type="button"
+                          onClick={() => { setActiveGifCategory(tab); setGifSearchQuery(''); }}
+                          style={{
+                            background: activeGifCategory === tab ? 'rgba(168, 85, 247, 0.25)' : 'rgba(255,255,255,0.03)',
+                            border: activeGifCategory === tab ? '1px solid var(--purple-light)' : '1px solid var(--border)',
+                            borderRadius: '16px',
+                            padding: '3px 9px',
+                            fontSize: '9.5px',
+                            color: activeGifCategory === tab ? '#fff' : 'var(--text-dim)',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.15s',
+                            outline: 'none'
+                          }}
+                        >
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* GIF Grid with Infinite Scroll */}
+                    {(() => {
+                      const allMatches = getFilteredGifs();
+                      const displayed = allMatches.slice(0, gifDisplayLimit);
+                      return (
+                        <div 
+                          onScroll={(e) => {
+                            const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+                            if (scrollTop + clientHeight >= scrollHeight - 80) {
+                              setGifDisplayLimit(prev => Math.min(prev + 30, allMatches.length));
+                            }
+                          }}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(2, 1fr)',
+                            gap: '8px',
+                            maxHeight: '240px',
+                            overflowY: 'auto',
+                            paddingRight: '4px'
+                          }}
+                        >
+                          {displayed.length === 0 ? (
+                            <div style={{ gridColumn: 'span 2', textAlign: 'center', padding: '30px 0', fontSize: '11px', color: 'var(--text-muted)' }}>
+                              {isSearchingLive ? 'Recherche en direct sur le web...' : 'Aucun GIF trouvé pour cette recherche'}
+                            </div>
+                          ) : (
+                            displayed.map((gif, idx) => (
+                              <button
+                                key={`${gif.url}-${idx}`}
+                                type="button"
+                                onClick={() => {
+                                  sendDirectMessage(gif.url);
+                                  setShowGifPicker(false);
+                                }}
+                                style={{
+                                  position: 'relative',
+                                  background: 'rgba(0,0,0,0.5)',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  borderRadius: '8px',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  overflow: 'hidden',
+                                  height: '105px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  transition: 'transform 0.15s, border-color 0.15s',
+                                  outline: 'none'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.transform = 'scale(1.03)';
+                                  e.currentTarget.style.borderColor = 'var(--purple-light)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.transform = 'scale(1)';
+                                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                                }}
+                              >
+                                <img 
+                                  src={gif.url} 
+                                  alt="gif" 
+                                  loading="lazy"
+                                  onError={(e) => {
+                                    if (e.currentTarget.parentElement) {
+                                      e.currentTarget.parentElement.style.display = 'none';
+                                    }
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                    display: 'block'
+                                  }}
+                                />
+                              </button>
+                            ))
+                          )}
+                          {displayed.length < allMatches.length && (
+                            <div style={{ gridColumn: 'span 2', textAlign: 'center', padding: '6px 0', fontSize: '9px', color: 'var(--text-dim)' }}>
+                              {displayed.length} / {allMatches.length} GIFs • Faites défiler pour charger la suite
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Custom GIF link sender (with strict safety verification) */}
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '8px' }}>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <input 
+                          type="text" 
+                          placeholder="Ou coller un lien direct GIF..." 
+                          value={customGifUrl}
+                          onChange={(e) => { setCustomGifUrl(e.target.value); setCustomGifError(''); }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSendCustomGif(e);
+                            }
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '6px 8px',
+                            fontSize: '10px',
+                            borderRadius: '6px',
+                            background: 'rgba(0,0,0,0.3)',
+                            border: customGifError ? '1px solid #ef4444' : '1px solid var(--border)',
+                            color: '#fff',
+                            outline: 'none'
+                          }}
+                        />
+                        <button 
+                          type="button" 
+                          onClick={handleSendCustomGif}
+                          style={{
+                            background: 'rgba(168, 85, 247, 0.25)',
+                            border: '1px solid var(--purple-light)',
+                            color: '#fff',
+                            borderRadius: '6px',
+                            padding: '5px 12px',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Envoyer
+                        </button>
+                      </div>
+                      {customGifError && (
+                        <div style={{ color: '#ef4444', fontSize: '9px', marginTop: '4px' }}>
+                          {customGifError}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <input 
                   type="text" 
                   placeholder={t.chat_placeholder}
@@ -1352,7 +1506,10 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button 
                     type="button"
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    onClick={() => {
+                      setShowEmojiPicker(!showEmojiPicker);
+                      setShowGifPicker(false);
+                    }}
                     className="emoji-toggle-btn hover-glow-border"
                     style={{
                       width: '42px', height: '42px', borderRadius: '8px',
@@ -1361,12 +1518,30 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
                       color: showEmojiPicker ? 'var(--purple-light)' : 'var(--crystal)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s'
                     }}
-                    title="Emojis"
+                    title="Emojis & Emotes"
                   >
                     <Smile size={16} />
                   </button>
 
-
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setShowGifPicker(!showGifPicker);
+                      setShowEmojiPicker(false);
+                    }}
+                    className="gif-toggle-btn hover-glow-border"
+                    style={{
+                      width: '42px', height: '42px', borderRadius: '8px',
+                      background: showGifPicker ? 'rgba(168,85,247,0.2)' : 'rgba(0,0,0,0.2)',
+                      border: showGifPicker ? '1px solid var(--purple-light)' : '1px solid var(--border)',
+                      color: showGifPicker ? 'var(--purple-light)' : 'var(--crystal)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s',
+                      fontSize: '11px', fontWeight: '800', letterSpacing: '0.5px'
+                    }}
+                    title="Envoyer un GIF (Sans NSFW)"
+                  >
+                    GIF
+                  </button>
 
                   <button 
                     type="submit" 

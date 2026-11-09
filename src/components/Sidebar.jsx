@@ -11,7 +11,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
 
   const getPseudo = () => {
     if (typeof user === 'string') return user;
-    return user?.pseudo || t.player;
+    return user?.pseudo || user?.username || t.player;
   };
 
   const [isPremium, setIsPremium] = React.useState(false);
@@ -22,6 +22,50 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
   const [friendsWithUnread, setFriendsWithUnread] = React.useState({});
   const [apiUsers, setApiUsers] = React.useState([]);
 
+  const processFriendsData = (data) => {
+    if (!data) return;
+    const rawPseudo = (typeof user === 'string' ? user : (user?.pseudo || user?.username || '')).trim();
+    if (!rawPseudo) return;
+    const curL = rawPseudo.toLowerCase();
+
+    const requests = Array.isArray(data.requests) ? data.requests : [];
+    const friends = Array.isArray(data.friends) ? data.friends : [];
+    const messages = Array.isArray(data.messages) ? data.messages : [];
+    
+    // Count incoming requests
+    const incomingReqs = requests.filter(r => r && r.to && r.to.trim().toLowerCase() === curL);
+    
+    // Count unread messages and track senders
+    let unreadCount = 0;
+    const unreadMap = {};
+    messages.forEach(m => {
+      if (m && m.to && m.to.trim().toLowerCase() === curL) {
+        const sender = (m.from || '').trim().toLowerCase();
+        const lastRead = parseInt(localStorage.getItem(`chat_last_read_${curL}_${sender}`) || '0', 10);
+        if (m.timestamp > lastRead) {
+          unreadCount++;
+          unreadMap[sender] = (unreadMap[sender] || 0) + 1;
+        }
+      }
+    });
+    
+    setIncomingCount(incomingReqs.length + unreadCount);
+    setFriendsWithUnread(unreadMap);
+
+    const list = [];
+    friends.forEach(f => {
+      if (!f) return;
+      const u1L = (f.user1 || '').trim().toLowerCase();
+      const u2L = (f.user2 || '').trim().toLowerCase();
+      if (u1L === curL && f.user2 && !list.some(x => x.toLowerCase() === u2L)) {
+        list.push(f.user2.trim());
+      } else if (u2L === curL && f.user1 && !list.some(x => x.toLowerCase() === u1L)) {
+        list.push(f.user1.trim());
+      }
+    });
+    setSidebarFriends(list);
+  };
+
   const loadSidebarFriends = async () => {
     if (!isLoggedIn) return;
     let data = null;
@@ -29,51 +73,27 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
       try {
         data = await window.ipcRenderer.invoke('friends-get-data');
       } catch (e) {
-        console.error("Failed to load sidebar friends:", e);
+        console.error("Failed to load sidebar friends via IPC:", e);
       }
-    } else {
+    }
+    
+    // Cloud fallback: eldersea.tekao.fr/api/users/12
+    if (!data || !Array.isArray(data.friends)) {
       try {
-        const res = await fetch('https://eldersea.tekao.fr/api/friends');
-        if (res.ok) data = await res.json();
+        const res = await fetch('https://eldersea.tekao.fr/api/users/12');
+        if (res.ok) {
+          const userObj = await res.json();
+          if (userObj && userObj.bio) {
+            data = JSON.parse(userObj.bio);
+          }
+        }
       } catch (e) {
-        console.error("Failed web fallback sidebar friends load:", e);
+        console.error("Failed cloud fallback sidebar friends load:", e);
       }
     }
 
     if (data) {
-      const curL = getPseudo().toLowerCase();
-      const requests = Array.isArray(data.requests) ? data.requests : [];
-      const friends = Array.isArray(data.friends) ? data.friends : [];
-      const messages = Array.isArray(data.messages) ? data.messages : [];
-      
-      // Count incoming requests
-      const incomingReqs = requests.filter(r => r.to && r.to.toLowerCase() === curL);
-      
-      // Count unread messages and track senders
-      let unreadCount = 0;
-      const unreadMap = {};
-      messages.forEach(m => {
-        if (m.to && m.to.toLowerCase() === curL) {
-          const sender = m.from.toLowerCase();
-          const lastRead = parseInt(localStorage.getItem(`chat_last_read_${curL}_${sender}`) || '0', 10);
-          if (m.timestamp > lastRead) {
-            unreadCount++;
-            unreadMap[sender] = (unreadMap[sender] || 0) + 1;
-          }
-        }
-      });
-      
-      setIncomingCount(incomingReqs.length + unreadCount);
-      setFriendsWithUnread(unreadMap);
-
-      const list = [];
-      friends.forEach(f => {
-        const u1L = f.user1 ? f.user1.toLowerCase() : '';
-        const u2L = f.user2 ? f.user2.toLowerCase() : '';
-        if (u1L === curL) list.push(f.user2);
-        else if (u2L === curL) list.push(f.user1);
-      });
-      setSidebarFriends(list);
+      processFriendsData(data);
     }
     try {
       const res = await fetch('https://eldersea.tekao.fr/api/users');
@@ -87,8 +107,19 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
   React.useEffect(() => {
     if (isLoggedIn) {
       loadSidebarFriends();
-      const interval = setInterval(loadSidebarFriends, 5000);
-      return () => clearInterval(interval);
+      const interval = setInterval(loadSidebarFriends, 3000);
+      const handleFriendsUpdate = (e) => {
+        if (e && e.detail) {
+          processFriendsData(e.detail);
+        } else {
+          loadSidebarFriends();
+        }
+      };
+      window.addEventListener('friends-data-updated', handleFriendsUpdate);
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener('friends-data-updated', handleFriendsUpdate);
+      };
     }
   }, [isLoggedIn, user]);
 
@@ -208,7 +239,10 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
             marginBottom: '8px'
           }}
           onClick={() => {
-            if (!isFriendsExpanded) setIsFriendsExpanded(true);
+            if (!isFriendsExpanded) {
+              setIsFriendsExpanded(true);
+              loadSidebarFriends();
+            }
           }}
           >
             <div 

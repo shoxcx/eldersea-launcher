@@ -1825,33 +1825,57 @@ function saveLocalFriendsData(data) {
   }
 }
 
-async function fetchCloudFriendsData() {
-  // 1. Essai de l'endpoint natif /api/friends
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
-    const res = await fetch('https://eldersea.tekao.fr/api/friends', { 
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' }
-    });
-    clearTimeout(timeoutId);
-    const ct = res.headers.get('content-type') || '';
-    if (res.ok && ct.includes('application/json')) {
-      const data = await res.json();
-      if (data && typeof data === 'object') {
-        if (!Array.isArray(data.requests)) data.requests = [];
-        if (!Array.isArray(data.friends)) data.friends = [];
-        if (!Array.isArray(data.messages)) data.messages = [];
-        saveLocalFriendsData(data);
-        return data;
-      }
-    }
-  } catch (e) {}
+function mergeFriendsData(remoteData, localData) {
+  const result = {
+    requests: [],
+    friends: [],
+    messages: []
+  };
 
-  // 2. Synchronisation Cloud MySQL native de secours (immédiate, 100% active)
+  const requestsMap = new Map();
+  const friendsMap = new Map();
+  const messagesMap = new Map();
+
+  const addReq = (r) => {
+    if (!r || !r.from || !r.to) return;
+    const key = `${r.from.toLowerCase()}->${r.to.toLowerCase()}`;
+    if (!requestsMap.has(key)) requestsMap.set(key, r);
+  };
+
+  const addFriend = (f) => {
+    if (!f || !f.user1 || !f.user2) return;
+    const [u1, u2] = [f.user1.toLowerCase(), f.user2.toLowerCase()].sort();
+    const key = `${u1}<->${u2}`;
+    if (!friendsMap.has(key)) friendsMap.set(key, f);
+  };
+
+  const addMsg = (m) => {
+    if (!m || !m.from || !m.to || !m.message) return;
+    const key = `${m.from}_${m.to}_${m.timestamp}_${m.message}`;
+    if (!messagesMap.has(key)) messagesMap.set(key, m);
+  };
+
+  (localData?.requests || []).forEach(addReq);
+  (remoteData?.requests || []).forEach(addReq);
+
+  (localData?.friends || []).forEach(addFriend);
+  (remoteData?.friends || []).forEach(addFriend);
+
+  (localData?.messages || []).forEach(addMsg);
+  (remoteData?.messages || []).forEach(addMsg);
+
+  result.requests = Array.from(requestsMap.values());
+  result.friends = Array.from(friendsMap.values());
+  result.messages = Array.from(messagesMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+
+  return result;
+}
+
+async function fetchCloudFriendsData() {
+  const localData = getLocalFriendsData();
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
     const res = await fetch('https://eldersea.tekao.fr/api/users/12', {
       signal: controller.signal,
       headers: { 'Accept': 'application/json' }
@@ -1863,42 +1887,25 @@ async function fetchCloudFriendsData() {
         try {
           const parsed = JSON.parse(user.bio);
           if (parsed && typeof parsed === 'object') {
-            if (!Array.isArray(parsed.requests)) parsed.requests = [];
-            if (!Array.isArray(parsed.friends)) parsed.friends = [];
-            if (!Array.isArray(parsed.messages)) parsed.messages = [];
-            saveLocalFriendsData(parsed);
-            return parsed;
+            const merged = mergeFriendsData(parsed, localData);
+            saveLocalFriendsData(merged);
+            return merged;
           }
         } catch (err) {}
       }
     }
   } catch (e) {}
 
-  return getLocalFriendsData();
+  return localData;
 }
 
 async function pushCloudFriendsData(data) {
   saveLocalFriendsData(data);
   let pushed = false;
 
-  // 1. Essai de l'endpoint natif /api/friends
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
-    const res = await fetch('https://eldersea.tekao.fr/api/friends', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(data),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if (res.ok) pushed = true;
-  } catch (e) {}
-
-  // 2. Synchronisation Cloud MySQL native de secours (immédiate, 100% active)
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
     const res = await fetch('https://eldersea.tekao.fr/api/users/12', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -1908,7 +1915,7 @@ async function pushCloudFriendsData(data) {
     clearTimeout(timeoutId);
     if (res.ok) {
       pushed = true;
-      console.log('[FRIENDS CLOUD PUSH] Données amis enregistrées sur le cloud MySQL.');
+      console.log('[FRIENDS CLOUD PUSH] Données amis synchronisées avec succès.');
     }
   } catch (e) {
     console.warn('[FRIENDS CLOUD PUSH ERROR]', e.message);
@@ -2037,4 +2044,41 @@ ipcMain.handle('friends-send-message', async (event, { fromUser, toUser, text })
 
   await pushCloudFriendsData(db);
   return db;
+});
+
+// ── Live GIF Search via Tenor ──
+ipcMain.handle('search-gifs', async (event, query) => {
+  if (!query || typeof query !== 'string') return [];
+  const cleanQ = query.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, 50);
+  if (!cleanQ) return [];
+
+  const blocked = ['nsfw', 'porn', 'xxx', 'hentai', 'nude', 'sexy', 'boobs', 'penis', 'erotic', 'r18', 'gore', 'blood', 'lewd', 'rule34', 'ecchi', 'sex'];
+  const lowerQ = cleanQ.toLowerCase();
+  if (blocked.some(b => lowerQ.includes(b))) return [];
+
+  try {
+    const formattedTerm = encodeURIComponent(cleanQ.toLowerCase().replace(/\s+/g, '-')) + '-gifs';
+    const url = `https://tenor.com/search/${formattedTerm}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7'
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) return [];
+    const html = await res.text();
+    const matches = html.match(/https:\/\/media\.tenor\.com\/[a-zA-Z0-9_\-\/]+\.gif/g) || [];
+    const unique = Array.from(new Set(matches)).slice(0, 40);
+    return unique.map(u => ({
+      url: u,
+      category: 'Populaire',
+      tags: [cleanQ.toLowerCase()]
+    }));
+  } catch (err) {
+    return [];
+  }
 });
