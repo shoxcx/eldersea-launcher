@@ -150,6 +150,23 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
   
   // Real users data fetched from ElderSea SQL API (to verify users and check online status/rank/balance)
   const [allApiUsers, setAllApiUsers] = useState([]);
+  const [statusTick, setStatusTick] = useState(0);
+
+  // Fast periodic fetch for real-time online status of all users
+  const fetchApiUsers = async () => {
+    try {
+      const res = await fetch('https://eldersea.tekao.fr/api/users');
+      if (res.ok) {
+        const users = await res.json();
+        if (Array.isArray(users)) {
+          setAllApiUsers(users.filter(u => u && u.pseudo && u.pseudo !== 'ElderSea_System'));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch API users:", err);
+    }
+    setStatusTick(Date.now());
+  };
   
   // Message input text
   const [messageText, setMessageText] = useState('');
@@ -329,24 +346,19 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       }
     }
 
-    try {
-      const res = await fetch('https://eldersea.tekao.fr/api/users');
-      if (res.ok) {
-        const users = await res.json();
-        if (Array.isArray(users)) {
-          setAllApiUsers(users.filter(u => u && u.pseudo && u.pseudo !== 'ElderSea_System'));
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch API users:", err);
-    }
+    fetchApiUsers();
   };
 
-  // Initial and periodic polling (every 5 seconds)
+  // Initial and periodic polling (friends every 4s, online status every 2.5s)
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
+    fetchApiUsers();
+    const friendsInterval = setInterval(loadData, 4000);
+    const usersInterval = setInterval(fetchApiUsers, 2500);
+    return () => {
+      clearInterval(friendsInterval);
+      clearInterval(usersInterval);
+    };
   }, []);
 
   // Auto scroll to bottom on new messages
@@ -416,7 +428,8 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
 
     if (found) {
       const lastActive = found.lastActive || null;
-      const isOnline = lastActive ? ((Date.now() - new Date(lastActive).getTime()) / 1000 / 60 <= 3) : false;
+      const isRecent = lastActive ? Math.abs(Date.now() - new Date(lastActive).getTime()) < 65000 : false;
+      const isOnline = Boolean((found.isOnline === true || found.isOnline === 1 || found.isOnline === '1') && isRecent);
       return {
         online: isOnline,
         lastActive,
@@ -655,11 +668,14 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
     return 'Aucun';
   };
 
-  const getStatusColor = (lastActive) => {
-    if (!lastActive) return { bg: '#6b7280', glow: 'none' };
-    const diff = (Date.now() - new Date(lastActive).getTime()) / 1000 / 60;
-    if (diff <= 3) {
-      return { bg: '#10b981', glow: '0 0 6px #10b981' }; // green
+  const getStatusColor = (isOnlineOrLastActive) => {
+    if (typeof isOnlineOrLastActive === 'boolean') {
+      return isOnlineOrLastActive ? { bg: '#10b981', glow: '0 0 8px #10b981' } : { bg: '#6b7280', glow: 'none' };
+    }
+    if (!isOnlineOrLastActive) return { bg: '#6b7280', glow: 'none' };
+    const diff = Math.abs(Date.now() - new Date(isOnlineOrLastActive).getTime()) / 1000;
+    if (diff <= 65) {
+      return { bg: '#10b981', glow: '0 0 8px #10b981' }; // green
     } else {
       return { bg: '#6b7280', glow: 'none' }; // grey
     }
@@ -915,7 +931,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
               ) : (
                 friends.map((pseudo) => {
                   const details = getUserDetails(pseudo);
-                  const statusColor = getStatusColor(details.lastActive);
+                  const statusColor = getStatusColor(details.online);
                   const unreadCount = getUnreadCount(pseudo);
                   return (
                     <div 
@@ -1012,8 +1028,8 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
                         className="status-dot" 
                         style={{ 
                           width: '8px', height: '8px', borderRadius: '50%', 
-                          background: getStatusColor(activeDetails.lastActive).bg,
-                          boxShadow: getStatusColor(activeDetails.lastActive).glow
+                          background: getStatusColor(activeDetails.online).bg,
+                          boxShadow: getStatusColor(activeDetails.online).glow
                         }} 
                       />
                     </div>

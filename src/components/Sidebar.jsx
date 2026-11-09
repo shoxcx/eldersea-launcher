@@ -95,6 +95,9 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
     if (data) {
       processFriendsData(data);
     }
+  };
+
+  const fetchSidebarUsers = async () => {
     try {
       const res = await fetch('https://eldersea.tekao.fr/api/users');
       if (res.ok) {
@@ -107,7 +110,9 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
   React.useEffect(() => {
     if (isLoggedIn) {
       loadSidebarFriends();
-      const interval = setInterval(loadSidebarFriends, 3000);
+      fetchSidebarUsers();
+      const friendsInterval = setInterval(loadSidebarFriends, 4000);
+      const usersInterval = setInterval(fetchSidebarUsers, 2500);
       const handleFriendsUpdate = (e) => {
         if (e && e.detail) {
           processFriendsData(e.detail);
@@ -117,30 +122,41 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
       };
       window.addEventListener('friends-data-updated', handleFriendsUpdate);
       return () => {
-        clearInterval(interval);
+        clearInterval(friendsInterval);
+        clearInterval(usersInterval);
         window.removeEventListener('friends-data-updated', handleFriendsUpdate);
       };
     }
   }, [isLoggedIn, user]);
 
   const getFriendDetails = (pseudo) => {
-    const found = apiUsers.find(u => u.pseudo && u.pseudo.toLowerCase() === pseudo.toLowerCase());
-    const lastActive = found?.lastActive || null;
-    const isOnline = lastActive ? ((Date.now() - new Date(lastActive).getTime()) / 1000 / 60 <= 3) : false;
+    if (!pseudo) return { online: false, lastActive: null, avatar: 'https://minotar.net/avatar/Steve/32' };
+    const cleanPseudo = pseudo.trim().toLowerCase();
+    const found = apiUsers.find(u => u && u.pseudo && u.pseudo.toLowerCase().trim() === cleanPseudo);
+    
+    let isOnline = false;
+    if (found) {
+      const isRecent = found.lastActive ? Math.abs(Date.now() - new Date(found.lastActive).getTime()) < 65000 : false;
+      isOnline = Boolean((found.isOnline === true || found.isOnline === 1 || found.isOnline === '1') && isRecent);
+    }
+
     return {
       online: isOnline,
-      lastActive,
+      lastActive: found?.lastActive || null,
       avatar: `https://minotar.net/avatar/${pseudo}/32`
     };
   };
 
-  const getStatusColor = (lastActive) => {
-    if (!lastActive) return { bg: '#6b7280', glow: 'none' };
-    const diff = (Date.now() - new Date(lastActive).getTime()) / 1000 / 60;
-    if (diff <= 3) {
-      return { bg: '#10b981', glow: '0 0 6px #10b981' }; // green
+  const getStatusColor = (isOnlineOrLastActive) => {
+    if (typeof isOnlineOrLastActive === 'boolean') {
+      return isOnlineOrLastActive ? { bg: '#10b981', glow: '0 0 8px #10b981' } : { bg: '#6b7280', glow: 'none' };
+    }
+    if (!isOnlineOrLastActive) return { bg: '#6b7280', glow: 'none' };
+    const diff = Math.abs(Date.now() - new Date(isOnlineOrLastActive).getTime()) / 1000;
+    if (diff <= 65) {
+      return { bg: '#10b981', glow: '0 0 8px #10b981' };
     } else {
-      return { bg: '#6b7280', glow: 'none' }; // grey
+      return { bg: '#6b7280', glow: 'none' };
     }
   };
 
@@ -317,7 +333,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
               ) : (
                 sidebarFriends.map(friend => {
                   const details = getFriendDetails(friend);
-                  const statusColor = getStatusColor(details.lastActive);
+                  const statusColor = getStatusColor(details.online);
                   return (
                     <div 
                       key={friend}

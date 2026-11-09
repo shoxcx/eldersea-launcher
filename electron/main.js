@@ -211,20 +211,25 @@ const getIconPath = () => {
 };
 
 
+let activeMinecraftProcess = null;
+let activeUserId = null;
+let activeUserPseudo = null;
+
 function checkIfGameIsRunning() {
+  if (isGameRunning && activeMinecraftProcess && !activeMinecraftProcess.killed) {
+    return Promise.resolve(true);
+  }
   return new Promise((resolve) => {
-    exec('powershell "Get-CimInstance Win32_Process -Filter \\"Name = \'javaw.exe\'\\" | Select-Object -ExpandProperty CommandLine"', (err, stdout) => {
-      if (err) {
-        exec('tasklist /FI "IMAGENAME eq javaw.exe" /NH', (err2, stdout2) => {
-            if (err2) return resolve(false);
-            return resolve(stdout2.toLowerCase().includes('javaw.exe'));
-        });
-        return;
-      }
-      // On cherche strictement le dossier .eldersea pour éviter de détecter d'autres instances Minecraft
-      const isRunning = stdout.toLowerCase().includes('.eldersea');
-      resolve(isRunning);
-    });
+    if (process.platform === 'win32') {
+      exec('tasklist /FI "IMAGENAME eq javaw.exe" /NH', (err, stdout) => {
+        if (err || !stdout) return resolve(false);
+        resolve(stdout.toLowerCase().includes('javaw.exe'));
+      });
+    } else {
+      exec('pgrep -f "java|minecraft"', (err, stdout) => {
+        resolve(!err && !!stdout.trim());
+      });
+    }
   });
 }
 
@@ -410,8 +415,35 @@ ipcMain.on('set-show-console', (event, enable) => {
   console.log(`[SETTINGS] Set showConsole to ${enable}`);
 });
 
+ipcMain.on('sync-active-user', (event, { pseudo, id }) => {
+  activeUserPseudo = pseudo || null;
+  activeUserId = id || null;
+});
+
+function notifyUserOffline() {
+  if (!activeUserId) return;
+  try {
+    const postData = JSON.stringify({ isOnline: false });
+    const req = https.request({
+      hostname: 'eldersea.tekao.fr',
+      port: 443,
+      path: `/api/users/${activeUserId}/online`,
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      },
+      timeout: 1500
+    });
+    req.on('error', () => {});
+    req.write(postData);
+    req.end();
+  } catch (e) {}
+}
+
 app.on('before-quit', () => {
   isQuitting = true;
+  notifyUserOffline();
 });
 
 app.on('will-quit', () => {
@@ -848,7 +880,7 @@ async function syncHTTP(gameRoot, isVerificationOnly = false) {
               req.abort();
               console.warn(`[SYNC] HEAD timeout pour ${url}, utilisation du fichier local.`);
               resolve(false);
-          }, 4000);
+          }, 1800);
           req.on('response', (res) => {
               clearTimeout(timeout);
               if (res.statusCode === 200) {
@@ -945,23 +977,28 @@ async function syncHTTP(gameRoot, isVerificationOnly = false) {
 
       let completedTasks = 0;
       const totalTasks = filesToSync.length;
+      let lastSyncProgressTick = 0;
 
       const sendSyncProgress = (filename) => {
           completedTasks++;
-          if (mainWindow && !mainWindow.isDestroyed()) {
-              if (!isVerificationOnly) {
-                  mainWindow.webContents.send('launch-progress', {
-                      type: 'Vérification & Téléchargement...',
-                      task: completedTasks,
+          const now = Date.now();
+          if (now - lastSyncProgressTick > 75 || completedTasks === totalTasks) {
+              lastSyncProgressTick = now;
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                  if (!isVerificationOnly) {
+                      mainWindow.webContents.send('launch-progress', {
+                          type: 'Vérification & Téléchargement...',
+                          task: completedTasks,
+                          total: totalTasks,
+                          filename: filename
+                      });
+                  }
+                  mainWindow.webContents.send('verify-progress', {
+                      completed: completedTasks,
                       total: totalTasks,
                       filename: filename
                   });
               }
-              mainWindow.webContents.send('verify-progress', {
-                  completed: completedTasks,
-                  total: totalTasks,
-                  filename: filename
-              });
           }
       };
 
@@ -1169,7 +1206,6 @@ function createTray() {
 ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
   if (isGameRunning) return;
   isGameRunning = true;
-  mainWindow.webContents.send('game-status', true);
 
   if (showConsole) {
     createConsoleWindow();
@@ -1335,14 +1371,14 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
             gameStarted = true;
             setDiscordActivity('En jeu', `Joueur : ${pseudo || 'Joueur'}`, Date.now(), true);
             if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('game-status', true);
               mainWindow.webContents.send('hide-progress');
               if (backgroundMode) {
                 mainWindow.hide();
                 createTray();
               }
             }
-            patchMinecraftAssetIcons();
-            applyMinecraftWindowIcon();
+            applyMinecraftWindowIcon(activeMinecraftProcess?.pid);
             triggerDeliverPendingPurchases(pseudo);
         }
     });
@@ -1371,6 +1407,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     });
     
     let globalMclcProgress = { type: 'Fichiers de jeu...', task: 0, total: 100 };
+    let lastProgressTick = 0;
 
     launcher.on('progress', (e) => {
       globalMclcProgress = {
@@ -1378,29 +1415,39 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         task: e.task,
         total: e.total
       };
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('launch-progress', {
-          ...globalMclcProgress,
-          filename: null
-        });
+      const now = Date.now();
+      if (now - lastProgressTick > 100 || e.task === e.total || e.task === 0) {
+        lastProgressTick = now;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('launch-progress', {
+            ...globalMclcProgress,
+            filename: null
+          });
+        }
+        appendToLogBuffer(`[MCLC] Progression: ${e.type} (${e.task}/${e.total})`);
       }
-      appendToLogBuffer(`[MCLC] Progression: ${e.type} (${e.task}/${e.total})`);
     });
     
+    let lastDlTick = 0;
     launcher.on('download-status', (e) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('launch-progress', {
-                ...globalMclcProgress,
-                fileCurrent: e.current,
-                fileTotal: e.total,
-                filename: e.name
-            });
+        const now = Date.now();
+        if (now - lastDlTick > 120 || e.current === e.total) {
+          lastDlTick = now;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('launch-progress', {
+                  ...globalMclcProgress,
+                  fileCurrent: e.current,
+                  fileTotal: e.total,
+                  filename: e.name
+              });
+          }
+          appendToLogBuffer(`[DL] ${e.type}: ${e.name} (${e.current}/${e.total})`);
         }
-        appendToLogBuffer(`[DL] ${e.type}: ${e.name} (${e.current}/${e.total})`);
     });
     
     launcher.on('close', (code) => {
         isGameRunning = false;
+        activeMinecraftProcess = null;
         setDiscordActivity('Dans le launcher', 'Prêt à naviguer');
 
         if (consoleWindow && !consoleWindow.isDestroyed()) {
@@ -1443,11 +1490,14 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     console.log("[FORGE] Lancement du moteur...");
     appendToLogBuffer("[MCLC] Lancement final du moteur Minecraft...");
     patchMinecraftAssetIcons();
-    applyMinecraftWindowIcon();
-    await launcher.launch(opts);
+    activeMinecraftProcess = await launcher.launch(opts);
+    if (activeMinecraftProcess && activeMinecraftProcess.pid) {
+      applyMinecraftWindowIcon(activeMinecraftProcess.pid);
+    }
     
   } catch (error) {
     isGameRunning = false;
+    activeMinecraftProcess = null;
     setDiscordActivity('Dans le launcher', 'Prêt à naviguer');
 
     if (consoleWindow && !consoleWindow.isDestroyed()) {
@@ -1578,7 +1628,9 @@ function triggerDeliverPendingPurchases(pseudo) {
   }
 }
 
+let hasPatchedAssetIcons = false;
 function patchMinecraftAssetIcons() {
+  if (hasPatchedAssetIcons) return;
   try {
     const physicalIcon = getPhysicalIconPath();
     if (!fs.existsSync(physicalIcon)) return;
@@ -1620,23 +1672,31 @@ function patchMinecraftAssetIcons() {
         console.warn(`[ICON PATCH] Erreur lors du patch de l'index ${file}:`, err.message);
       }
     }
+    hasPatchedAssetIcons = true;
   } catch (err) {
     console.error('[ICON PATCH ERROR]', err);
   }
 }
 
-function applyMinecraftWindowIcon() {
+let isIconWatcherRunning = false;
+function applyMinecraftWindowIcon(targetPid = null) {
   if (process.platform !== 'win32') return;
+  if (isIconWatcherRunning) return;
+  isIconWatcherRunning = true;
 
   const physicalIcon = getPhysicalIconPath();
-  if (!fs.existsSync(physicalIcon)) return;
-
-  patchMinecraftAssetIcons();
+  if (!fs.existsSync(physicalIcon)) {
+    isIconWatcherRunning = false;
+    return;
+  }
 
   const scriptPath = path.join(GAME_ROOT, 'apply-icon.ps1');
   const escapedIconPath = physicalIcon.replace(/'/g, "''");
+  const pidParam = (targetPid && Number.isInteger(targetPid)) ? targetPid : 0;
 
   const psScript = `
+param([int]$TargetPid = ${pidParam})
+
 Add-Type -TypeDefinition @"
 using System;
 using System.Text;
@@ -1651,7 +1711,7 @@ public class Win32IconHelper {
     public const int GCLP_HICONSM = -34;
 
     [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", EntryPoint = "SetClassLongPtr")]
     private static extern IntPtr SetClassLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
@@ -1680,9 +1740,6 @@ public class Win32IconHelper {
 
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
-    [DllImport("user32.dll")]
-    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -1744,33 +1801,37 @@ try {
     $hIconSmall = $bmpSmall.GetHicon()
     $hIconBig = $bmpBig.GetHicon()
 
-    $consecutiveNoProcess = 0
-    while ($consecutiveNoProcess -lt 15) {
-        $procs = Get-CimInstance Win32_Process -Filter "Name = 'javaw.exe' or Name = 'java.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*.eldersea*' -or $_.CommandLine -like '*forge*' -or $_.CommandLine -like '*1.20.1*' }
-        
-        if (-not $procs) {
-            $consecutiveNoProcess++
-            Start-Sleep -Milliseconds 1500
-            continue
-        }
-        $consecutiveNoProcess = 0
-        $pids = [uint32[]]@($procs | ForEach-Object { [uint32]$_.ProcessId })
-
-        $windows = [Win32IconHelper]::FindMatchingWindows($pids)
-        if ($windows.Length -gt 0) {
-            foreach ($hwnd in $windows) {
-                [Win32IconHelper]::SendMessage($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_SMALL, $hIconSmall)
-                [Win32IconHelper]::SendMessage($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_BIG, $hIconBig)
-                [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICON, $hIconBig)
-                [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICONSM, $hIconSmall)
-                [Win32IconHelper]::SetWindowText($hwnd, "ElderSea RPG 1.20.1")
-                [Win32IconHelper]::SetWindowPos($hwnd, [IntPtr]::Zero, 0, 0, 0, 0, 0x0027)
+    $appliedCount = 0
+    for ($i = 0; $i -lt 25; $i++) {
+        $pids = @()
+        if ($TargetPid -gt 0) {
+            $pids = @([uint32]$TargetPid)
+        } else {
+            $procs = Get-Process -Name "javaw","java" -ErrorAction SilentlyContinue
+            if ($procs) {
+                $pids = [uint32[]]@($procs | ForEach-Object { [uint32]$_.Id })
             }
         }
-        Start-Sleep -Milliseconds 1500
+
+        if ($pids.Length -gt 0) {
+            $windows = [Win32IconHelper]::FindMatchingWindows($pids)
+            if ($windows.Length -gt 0) {
+                foreach ($hwnd in $windows) {
+                    [Win32IconHelper]::PostMessage($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_SMALL, $hIconSmall)
+                    [Win32IconHelper]::PostMessage($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_BIG, $hIconBig)
+                    [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICON, $hIconBig)
+                    [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICONSM, $hIconSmall)
+                    [Win32IconHelper]::SetWindowText($hwnd, "ElderSea RPG 1.20.1")
+                }
+                $appliedCount++
+                if ($appliedCount -ge 2) {
+                    break
+                }
+            }
+        }
+        Start-Sleep -Milliseconds 1000
     }
 } catch {
-    # Ignore errors
 } finally {
     Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue
 }
@@ -1778,12 +1839,14 @@ try {
 
   try {
     fs.writeFileSync(scriptPath, psScript, 'utf8');
-    const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`;
+    const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -TargetPid ${pidParam}`;
     exec(cmd, (err) => {
+      isIconWatcherRunning = false;
       if (err) console.error('[ICON ERROR] Failed to run icon script:', err.message);
-      else console.log('[ICON] Custom icon watcher completed successfully.');
+      else console.log('[ICON] Custom icon applied and watcher completed cleanly.');
     });
   } catch (err) {
+    isIconWatcherRunning = false;
     console.error('[ICON ERROR] Failed to write icon script:', err);
   }
 }

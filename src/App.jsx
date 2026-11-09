@@ -45,10 +45,18 @@ function App() {
     return 'Aucun';
   };
 
-  const getStatusColor = (lastActive) => {
-    if (!lastActive) return { bg: '#6b7280', glow: 'none' };
-    const diff = (Date.now() - new Date(lastActive).getTime()) / 1000 / 60;
-    if (diff <= 3) {
+  const getStatusColor = (userObjOrLastActive) => {
+    if (!userObjOrLastActive) return { bg: '#6b7280', glow: 'none' };
+    if (typeof userObjOrLastActive === 'boolean') {
+      return userObjOrLastActive ? { bg: '#10b981', glow: '0 0 6px #10b981' } : { bg: '#6b7280', glow: 'none' };
+    }
+    if (typeof userObjOrLastActive === 'object') {
+      const isRecent = userObjOrLastActive.lastActive ? Math.abs(Date.now() - new Date(userObjOrLastActive.lastActive).getTime()) < 65000 : false;
+      const isOnline = Boolean((userObjOrLastActive.isOnline === true || userObjOrLastActive.isOnline === 1 || userObjOrLastActive.isOnline === '1') && isRecent);
+      return isOnline ? { bg: '#10b981', glow: '0 0 6px #10b981' } : { bg: '#6b7280', glow: 'none' };
+    }
+    const diff = Math.abs(Date.now() - new Date(userObjOrLastActive).getTime()) / 1000;
+    if (diff <= 65) {
       return { bg: '#10b981', glow: '0 0 6px #10b981' }; // green
     } else {
       return { bg: '#6b7280', glow: 'none' }; // grey
@@ -127,6 +135,8 @@ function App() {
   useEffect(() => {
     if (!isLoggedIn || !user) return;
     
+    let resolvedUserId = null;
+
     const pingStatus = async () => {
       const pseudo = typeof user === 'string' ? user : user?.pseudo;
       if (!pseudo) return;
@@ -136,10 +146,14 @@ function App() {
           const users = await res.json();
           const found = users.find(u => u.pseudo && u.pseudo.toLowerCase() === pseudo.toLowerCase());
           if (found) {
-            await fetch(`https://eldersea.tekao.fr/api/users/${found.id}`, {
+            resolvedUserId = found.id;
+            if (window.ipcRenderer) {
+              window.ipcRenderer.send('sync-active-user', { pseudo, id: found.id });
+            }
+            await fetch(`https://eldersea.tekao.fr/api/users/${found.id}/online`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ lastActive: new Date().toISOString() })
+              body: JSON.stringify({ isOnline: true })
             });
             // Vérifier et livrer d'éventuels achats en attente
             await fetch(`https://eldersea.tekao.fr/api/shop/deliver-pending?pseudo=${encodeURIComponent(pseudo)}`).catch(() => {});
@@ -151,8 +165,27 @@ function App() {
     };
 
     pingStatus();
-    const interval = setInterval(pingStatus, 30000); // every 30 seconds
-    return () => clearInterval(interval);
+    const interval = setInterval(pingStatus, 15000); // every 15 seconds
+
+    const handleBeforeUnload = () => {
+      if (resolvedUserId) {
+        try {
+          fetch(`https://eldersea.tekao.fr/api/users/${resolvedUserId}/online`, {
+            method: 'PATCH',
+            keepalive: true,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isOnline: false })
+          });
+        } catch (e) {}
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      handleBeforeUnload();
+    };
   }, [isLoggedIn, user]);
   
   // Download progress state
