@@ -211,11 +211,15 @@ const getIconPath = () => {
 };
 
 
+let isLaunchInProgress = false;
 let activeMinecraftProcess = null;
 let activeUserId = null;
 let activeUserPseudo = null;
 
 function checkIfGameIsRunning() {
+  if (isLaunchInProgress) {
+    return Promise.resolve(true);
+  }
   if (isGameRunning && activeMinecraftProcess && !activeMinecraftProcess.killed) {
     return Promise.resolve(true);
   }
@@ -357,6 +361,7 @@ if (!gotTheLock) {
   // Vérification périodique (toutes les 10 secondes) au cas où le jeu est fermé manuellement
   setInterval(async () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
+      if (isLaunchInProgress) return;
       const running = await checkIfGameIsRunning();
       if (running !== isGameRunning) {
         isGameRunning = running;
@@ -1204,8 +1209,16 @@ function createTray() {
 }
 
 ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
-  if (isGameRunning) return;
+  if (isLaunchInProgress || isGameRunning) {
+    console.log('[LAUNCH] Lancement déjà en cours ou jeu actif, clic ignoré.');
+    return;
+  }
+  isLaunchInProgress = true;
   isGameRunning = true;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('game-status', true);
+  }
 
   if (showConsole) {
     createConsoleWindow();
@@ -1369,6 +1382,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         
         if (!gameStarted) {
             gameStarted = true;
+            isLaunchInProgress = false;
             setDiscordActivity('En jeu', `Joueur : ${pseudo || 'Joueur'}`, Date.now(), true);
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('game-status', true);
@@ -1446,6 +1460,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     });
     
     launcher.on('close', (code) => {
+        isLaunchInProgress = false;
         isGameRunning = false;
         activeMinecraftProcess = null;
         setDiscordActivity('Dans le launcher', 'Prêt à naviguer');
@@ -1496,6 +1511,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     }
     
   } catch (error) {
+    isLaunchInProgress = false;
     isGameRunning = false;
     activeMinecraftProcess = null;
     setDiscordActivity('Dans le launcher', 'Prêt à naviguer');
@@ -1711,7 +1727,10 @@ public class Win32IconHelper {
     public const int GCLP_HICONSM = -34;
 
     [DllImport("user32.dll", SetLastError = true)]
-    public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
 
     [DllImport("user32.dll", EntryPoint = "SetClassLongPtr")]
     private static extern IntPtr SetClassLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
@@ -1754,7 +1773,7 @@ public class Win32IconHelper {
             GetWindowThreadProcessId(hWnd, out pid);
             
             bool pidMatch = false;
-            if (pids != null) {
+            if (pids != null && pids.Length > 0) {
                 for (int i = 0; i < pids.Length; i++) {
                     if (pids[i] == pid) {
                         pidMatch = true;
@@ -1771,9 +1790,9 @@ public class Win32IconHelper {
             GetClassName(hWnd, cb, 256);
             string className = cb.ToString();
 
-            if (pidMatch) {
+            if (className == "GLFW30" || className == "SunAwtFrame") {
                 list.Add(hWnd);
-            } else if (className == "GLFW30" || className == "SunAwtFrame") {
+            } else if (pidMatch && (!string.IsNullOrEmpty(title) || className.StartsWith("GLFW"))) {
                 list.Add(hWnd);
             } else if (!string.IsNullOrEmpty(title)) {
                 if (title.IndexOf("Minecraft", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -1802,34 +1821,41 @@ try {
     $hIconBig = $bmpBig.GetHicon()
 
     $appliedCount = 0
-    for ($i = 0; $i -lt 25; $i++) {
-        $pids = @()
-        if ($TargetPid -gt 0) {
-            $pids = @([uint32]$TargetPid)
-        } else {
-            $procs = Get-Process -Name "javaw","java" -ErrorAction SilentlyContinue
-            if ($procs) {
-                $pids = [uint32[]]@($procs | ForEach-Object { [uint32]$_.Id })
-            }
-        }
+    $noProcessCount = 0
 
-        if ($pids.Length -gt 0) {
-            $windows = [Win32IconHelper]::FindMatchingWindows($pids)
-            if ($windows.Length -gt 0) {
-                foreach ($hwnd in $windows) {
-                    [Win32IconHelper]::PostMessage($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_SMALL, $hIconSmall)
-                    [Win32IconHelper]::PostMessage($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_BIG, $hIconBig)
-                    [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICON, $hIconBig)
-                    [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICONSM, $hIconSmall)
-                    [Win32IconHelper]::SetWindowText($hwnd, "ElderSea RPG 1.20.1")
-                }
-                $appliedCount++
-                if ($appliedCount -ge 2) {
-                    break
-                }
+    # Monitor up to 180 seconds (3 minutes) to guarantee catching Forge window initialization
+    for ($i = 0; $i -lt 180; $i++) {
+        $procs = Get-Process -Name "javaw","java" -ErrorAction SilentlyContinue
+        if (-not $procs) {
+            $noProcessCount++
+            if ($noProcessCount -gt 25) {
+                break
             }
+            Start-Sleep -Milliseconds 1000
+            continue
         }
-        Start-Sleep -Milliseconds 1000
+        $noProcessCount = 0
+        $pids = [uint32[]]@($procs | ForEach-Object { [uint32]$_.Id })
+
+        $windows = [Win32IconHelper]::FindMatchingWindows($pids)
+        if ($windows.Length -gt 0) {
+            foreach ($hwnd in $windows) {
+                $outRes = [IntPtr]::Zero
+                [Win32IconHelper]::SendMessageTimeout($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_SMALL, $hIconSmall, 2, 800, [ref]$outRes)
+                [Win32IconHelper]::SendMessageTimeout($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_BIG, $hIconBig, 2, 800, [ref]$outRes)
+                [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICON, $hIconBig)
+                [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICONSM, $hIconSmall)
+                [Win32IconHelper]::SetWindowText($hwnd, "ElderSea RPG 1.20.1")
+            }
+            $appliedCount++
+            # Once applied consistently for 6 cycles (~10 seconds after window creation), exit cleanly
+            if ($appliedCount -ge 6) {
+                break
+            }
+            Start-Sleep -Milliseconds 1500
+        } else {
+            Start-Sleep -Milliseconds 1000
+        }
     }
 } catch {
 } finally {

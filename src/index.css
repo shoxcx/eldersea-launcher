@@ -296,6 +296,7 @@ body {
   border-color: rgba(255,255,255,0.05);
   color: var(--text-dim) !important;
   cursor: not-allowed;
+  pointer-events: none !important;
   transform: none !important;
   box-shadow: none !important;
   animation: none !important;

@@ -69,14 +69,15 @@ const HomeView = ({ onOpenAuth, setSelectedNews }) => {
       onOpenAuth();
       return;
     }
-    if (gameRunning) return;
+    if (isLaunching || gameRunning) return;
 
     setIsLaunching(true);
+    setGameRunning(true);
     if (window.ipcRenderer) {
       window.ipcRenderer.send('launch-started');
       window.ipcRenderer.send('launch-game', { pseudo: user.pseudo, ram, installPath: null });
     } else {
-      setTimeout(() => { setIsLaunching(false); }, 2000);
+      setTimeout(() => { setIsLaunching(false); setGameRunning(false); }, 2000);
     }
   };
 
@@ -143,13 +144,20 @@ const HomeView = ({ onOpenAuth, setSelectedNews }) => {
           position: 'relative', zIndex: 10,
           transition: 'all 0.6s ease'
         }}>
-          <button className="play-btn" onClick={handleLaunch} disabled={isLaunching || gameRunning} style={{ 
-            padding: '18px 64px', 
-            fontSize: '18px',
-            transition: 'all 0.6s ease',
-            boxShadow: '0 0 30px rgba(212,175,55,0.2)'
-          }}>
-            {gameRunning ? 'EN JEU' : (isLaunching ? t.launching : t.play)}
+          <button 
+            className="play-btn" 
+            onClick={handleLaunch} 
+            disabled={isLaunching || gameRunning} 
+            style={{ 
+              padding: '18px 64px', 
+              fontSize: '18px',
+              transition: 'all 0.6s ease',
+              boxShadow: '0 0 30px rgba(212,175,55,0.2)',
+              pointerEvents: (isLaunching || gameRunning) ? 'none' : 'auto',
+              cursor: (isLaunching || gameRunning) ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {gameRunning ? (isLaunching ? t.launching : 'EN JEU') : (isLaunching ? t.launching : t.play)}
           </button>
         </div>
 

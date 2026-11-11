@@ -1,7 +1,7 @@
 {
   "name": "eldersea",
   "private": true,
-  "version": "1.6.30",
+  "version": "1.6.31",
   "description": "ElderSea Minecraft Launcher",
   "author": "Flores Studio Team",
   "type": "module",
