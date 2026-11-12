@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSettingsStore } from '../store/useStore';
 import { translations } from '../translations';
-import { Camera, RefreshCw, FolderOpen, ExternalLink, Trash2, UploadCloud } from 'lucide-react';
+import { Camera, RefreshCw, FolderOpen, ExternalLink, Trash2, UploadCloud, Check } from 'lucide-react';
 
 
 const ScreenshotsView = ({ setFullscreen, setActiveTab }) => {
@@ -9,6 +9,7 @@ const ScreenshotsView = ({ setFullscreen, setActiveTab }) => {
   const t = translations[language] || translations['fr'];
   const [screenshots, setScreenshots] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [uploadStatusMap, setUploadStatusMap] = useState({});
 
   const fetchScreenshots = async () => {
     setLoading(true);
@@ -43,10 +44,65 @@ const ScreenshotsView = ({ setFullscreen, setActiveTab }) => {
       if (success) {
         setScreenshots(prev => prev.filter(s => s.fullPath !== fullPath));
       } else {
-        alert("Impossible de supprimer le fichier.");
+        window.showElderAlert ? window.showElderAlert("Impossible de supprimer le fichier. Vérifiez qu'il n'est pas utilisé par un autre programme.", 'error', 'SUPPRESSION IMPOSSIBLE') : alert("Impossible de supprimer le fichier.");
       }
     } catch (err) {
       console.error("Delete error:", err);
+      window.showElderAlert ? window.showElderAlert("Erreur lors de la suppression de la capture.", 'error', 'ERREUR') : alert("Erreur lors de la suppression.");
+    }
+  };
+
+  const handleHostScreenshot = async (e, s) => {
+    e.stopPropagation();
+    if (!window.ipcRenderer) return;
+
+    setUploadStatusMap(prev => ({ ...prev, [s.fullPath]: 'loading' }));
+    try {
+      const res = await window.ipcRenderer.invoke('upload-image-to-web', {
+        filePath: s.fullPath,
+        filename: s.name
+      });
+
+      if (res.success && res.url) {
+        navigator.clipboard.writeText(res.url);
+
+        // Save to hosted images localStorage history
+        try {
+          const saved = localStorage.getItem('eldersea-hosted-images');
+          const list = saved ? JSON.parse(saved) : [];
+          const newItem = {
+            id: Date.now() + Math.random().toString(36).substr(2, 9),
+            url: res.url,
+            name: s.name.replace(/\.[^/.]+$/, ""),
+            timestamp: new Date().toLocaleDateString()
+          };
+          localStorage.setItem('eldersea-hosted-images', JSON.stringify([newItem, ...list]));
+        } catch (storageErr) {}
+
+        setUploadStatusMap(prev => ({ ...prev, [s.fullPath]: 'copied' }));
+        setTimeout(() => {
+          setUploadStatusMap(prev => ({ ...prev, [s.fullPath]: null }));
+        }, 3000);
+
+        if (window.showElderAlert) {
+          window.showElderAlert("Votre capture a été hébergée avec succès !\nLe lien direct a été copié dans votre presse-papiers.", 'success', 'CAPTURE HÉBERGÉE');
+        }
+      } else {
+        if (window.showElderAlert) {
+          window.showElderAlert("Impossible d'héberger la capture : " + (res.error || "Erreur de connexion"), 'error', "ÉCHEC DE L'HÉBERGEMENT");
+        } else {
+          alert("Échec de l'hébergement : " + (res.error || "Erreur inconnue"));
+        }
+        setUploadStatusMap(prev => ({ ...prev, [s.fullPath]: null }));
+      }
+    } catch (err) {
+      console.error("Upload screenshot error:", err);
+      if (window.showElderAlert) {
+        window.showElderAlert("Erreur lors de l'envoi de l'image vers le cloud.", 'error', "ERREUR RÉSEAU");
+      } else {
+        alert("Erreur lors de l'envoi vers le cloud.");
+      }
+      setUploadStatusMap(prev => ({ ...prev, [s.fullPath]: null }));
     }
   };
 
@@ -109,6 +165,25 @@ const ScreenshotsView = ({ setFullscreen, setActiveTab }) => {
                 />
                 
                 <div className="card-actions" style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '8px', zIndex: 10 }}>
+                  <button 
+                    onClick={(e) => handleHostScreenshot(e, s)} 
+                    className="action-pill" 
+                    title={uploadStatusMap[s.fullPath] === 'copied' ? "Lien hébergé copié !" : "Héberger et copier le lien"}
+                    disabled={uploadStatusMap[s.fullPath] === 'loading'}
+                    style={{
+                      background: uploadStatusMap[s.fullPath] === 'copied' ? '#10b981' : uploadStatusMap[s.fullPath] === 'loading' ? 'rgba(168,85,247,0.3)' : undefined,
+                      borderColor: uploadStatusMap[s.fullPath] === 'copied' ? '#10b981' : undefined,
+                      color: uploadStatusMap[s.fullPath] === 'copied' ? '#fff' : undefined
+                    }}
+                  >
+                    {uploadStatusMap[s.fullPath] === 'loading' ? (
+                      <RefreshCw size={14} className="spin" />
+                    ) : uploadStatusMap[s.fullPath] === 'copied' ? (
+                      <Check size={14} />
+                    ) : (
+                      <UploadCloud size={14} />
+                    )}
+                  </button>
                   <button onClick={(e) => showItem(e, s.fullPath)} className="action-pill" title="Voir dans le dossier">
                     <ExternalLink size={14} />
                   </button>
@@ -117,8 +192,13 @@ const ScreenshotsView = ({ setFullscreen, setActiveTab }) => {
                   </button>
                 </div>
               </div>
-              <div style={{ padding: '12px 15px', fontSize: '11px', color: 'var(--text-dim)', background: 'rgba(0,0,0,0.3)', borderTop: '1px solid var(--border)' }}>
-                {s.name}
+              <div style={{ padding: '12px 15px', fontSize: '11px', color: 'var(--text-dim)', background: 'rgba(0,0,0,0.3)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                {uploadStatusMap[s.fullPath] === 'copied' && (
+                  <span style={{ color: '#10b981', fontWeight: 800, fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                    <Check size={12} /> Copié !
+                  </span>
+                )}
               </div>
             </div>
           ))}

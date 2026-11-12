@@ -5,7 +5,7 @@ import { Play, X, Lightbulb, ChevronDown } from 'lucide-react';
 
 const HomeView = ({ onOpenAuth, setSelectedNews }) => {
   const { user, isLoggedIn } = useAuthStore();
-  const { ram, language } = useSettingsStore();
+  const { ram, resolution, language } = useSettingsStore();
   const t = translations[language] || translations['fr'];
   const [isLaunching, setIsLaunching] = useState(false);
   const [gameRunning, setGameRunning] = useState(false);
@@ -75,7 +75,7 @@ const HomeView = ({ onOpenAuth, setSelectedNews }) => {
     setGameRunning(true);
     if (window.ipcRenderer) {
       window.ipcRenderer.send('launch-started');
-      window.ipcRenderer.send('launch-game', { pseudo: user.pseudo, ram, installPath: null });
+      window.ipcRenderer.send('launch-game', { pseudo: user.pseudo, ram, resolution: resolution || '1280x720', installPath: null });
     } else {
       setTimeout(() => { setIsLaunching(false); setGameRunning(false); }, 2000);
     }

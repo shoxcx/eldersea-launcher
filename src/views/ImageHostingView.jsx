@@ -45,7 +45,15 @@ const ImageHostingView = ({ setActiveTab, setFullscreen }) => {
     const pendingFiles = selectedFiles.filter(f => f.status !== 'success');
 
     if (pendingFiles.length + files.length > 10) {
-      alert(t.language === 'en' ? "You can upload up to 10 images at once." : "Vous ne pouvez pas héberger plus de 10 images à la fois.");
+      if (window.showElderAlert) {
+        window.showElderAlert(
+          t.language === 'en' ? "You can upload up to 10 images at once." : "Vous ne pouvez pas héberger plus de 10 images à la fois.",
+          'error',
+          'LIMITE DÉPASSÉE'
+        );
+      } else {
+        alert(t.language === 'en' ? "You can upload up to 10 images at once." : "Vous ne pouvez pas héberger plus de 10 images à la fois.");
+      }
       return;
     }
 
@@ -59,11 +67,27 @@ const ImageHostingView = ({ setActiveTab, setFullscreen }) => {
     const validated = [];
     for (const file of files) {
       if (file.size > 10 * 1024 * 1024) {
-        alert(t.language === 'en' ? `File ${file.name} is larger than 10MB.` : `Le fichier ${file.name} dépasse la limite de 10 Mo.`);
+        if (window.showElderAlert) {
+          window.showElderAlert(
+            t.language === 'en' ? `File ${file.name} is larger than 10MB.` : `Le fichier ${file.name} dépasse la limite de 10 Mo.`,
+            'error',
+            'FICHIER TROP VOLUMINEUX'
+          );
+        } else {
+          alert(t.language === 'en' ? `File ${file.name} is larger than 10MB.` : `Le fichier ${file.name} dépasse la limite de 10 Mo.`);
+        }
         continue;
       }
-      if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
-        alert(t.language === 'en' ? `File ${file.name} is not a valid image (PNG/JPG only).` : `Le fichier ${file.name} n'est pas une image valide (PNG/JPG uniquement).`);
+      if (!['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'].includes(file.type)) {
+        if (window.showElderAlert) {
+          window.showElderAlert(
+            t.language === 'en' ? `File ${file.name} is not a valid image (PNG, JPG, WEBP, GIF only).` : `Le fichier ${file.name} n'est pas une image valide (PNG, JPG, WEBP, GIF acceptés).`,
+            'error',
+            'FORMAT NON RECONNU'
+          );
+        } else {
+          alert(t.language === 'en' ? `File ${file.name} is not a valid image (PNG/JPG only).` : `Le fichier ${file.name} n'est pas une image valide.`);
+        }
         continue;
       }
 
@@ -190,8 +214,23 @@ const ImageHostingView = ({ setActiveTab, setFullscreen }) => {
     <div className="image-hosting-view fade-in" style={{ padding: '40px', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '30px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <button className="btn-secondary cinzel" onClick={() => setActiveTab('screenshots')} title="Retour aux captures" style={{ padding: '8px 15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ArrowLeft size={16} /> <span>RETOUR</span>
+          <button 
+            className="btn-secondary cinzel" 
+            onClick={() => setActiveTab('screenshots')} 
+            title="Retour aux captures" 
+            style={{ 
+              padding: '8px 18px', 
+              fontSize: '11px', 
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'rgba(212,175,55,0.08)',
+              borderColor: 'rgba(212,175,55,0.3)',
+              color: 'var(--crystal)'
+            }}
+          >
+            <ArrowLeft size={14} /> <span>RETOUR</span>
           </button>
           <h2 className="cinzel" style={{ fontSize: '20px', letterSpacing: '3px', color: 'var(--crystal)', margin: 0 }}>
             {t.host_title}
@@ -332,16 +371,28 @@ const ImageHostingView = ({ setActiveTab, setFullscreen }) => {
                 className="btn-secondary" 
                 onClick={clearList} 
                 disabled={uploading}
-                style={{ padding: '10px 20px', fontSize: '11px', borderRadius: '4px', cursor: uploading ? 'not-allowed' : 'pointer' }}
+                style={{ 
+                  padding: '12px 22px', 
+                  fontSize: '12px', 
+                  borderRadius: '8px', 
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                  background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.25)',
+                  color: '#f87171',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontWeight: 700
+                }}
               >
-                {t.host_clear}
+                <Trash2 size={14} /> {t.host_clear}
               </button>
 
               <button 
                 className="btn-primary" 
                 onClick={handleUpload} 
                 disabled={uploading || !selectedFiles.some(f => f.status === 'pending')}
-                style={{ padding: '10px 24px', fontSize: '11px', borderRadius: '4px', cursor: (uploading || !selectedFiles.some(f => f.status === 'pending')) ? 'not-allowed' : 'pointer' }}
+                style={{ padding: '12px 28px', fontSize: '13px', borderRadius: '8px', cursor: (uploading || !selectedFiles.some(f => f.status === 'pending')) ? 'not-allowed' : 'pointer' }}
               >
                 {uploading ? t.host_uploading.toUpperCase() : t.host_start}
               </button>

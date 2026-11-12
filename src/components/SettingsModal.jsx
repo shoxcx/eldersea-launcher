@@ -1,16 +1,41 @@
 import React from 'react';
 import { useSettingsStore } from '../store/useStore';
 import { translations } from '../translations';
-import { X, Cpu, Globe, Monitor, ShieldCheck } from 'lucide-react';
+import { X, Cpu, Globe, Monitor, ShieldCheck, RefreshCw } from 'lucide-react';
 import CustomDropdown from './CustomDropdown';
 
 const SettingsModal = ({ onClose }) => {
-  const { ram, setRam, language, setLanguage, launchOnStartup, setLaunchOnStartup, backgroundMode, setBackgroundMode, showConsole, setShowConsole } = useSettingsStore();
+  const { ram, setRam, language, setLanguage, launchOnStartup, setLaunchOnStartup, backgroundMode, setBackgroundMode, showConsole, setShowConsole, resolution, setResolution } = useSettingsStore();
   const t = translations[language] || translations['fr'];
 
   const [verifying, setVerifying] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
   const [statusText, setStatusText] = React.useState('');
+  const [checkingUpdate, setCheckingUpdate] = React.useState(false);
+  const [updateStatusText, setUpdateStatusText] = React.useState('');
+
+  const handleCheckUpdates = async () => {
+    if (checkingUpdate) return;
+    setCheckingUpdate(true);
+    setUpdateStatusText('Recherche en cours...');
+    if (window.ipcRenderer) {
+      try {
+        const res = await window.ipcRenderer.invoke('check-for-updates-manual');
+        if (res && res.status === 'available') {
+          setUpdateStatusText(`Nouvelle version v${res.version} disponible !`);
+        } else if (res && res.version) {
+          setUpdateStatusText(`À jour (v${res.version})`);
+        } else {
+          setUpdateStatusText('À jour !');
+        }
+      } catch (err) {
+        setUpdateStatusText(`Erreur : ${err.message}`);
+      }
+    } else {
+      setUpdateStatusText('À jour !');
+    }
+    setCheckingUpdate(false);
+  };
 
   React.useEffect(() => {
     if (window.ipcRenderer) {
@@ -57,6 +82,16 @@ const SettingsModal = ({ onClose }) => {
     { value: 'en', label: 'English' }
   ];
 
+  const resOptions = [
+    { value: 'auto', label: language === 'en' ? 'Default (Resizable window)' : 'Par défaut (Fenêtré libre modulable)' },
+    { value: '1280x720', label: '1280 x 720 (HD - Fenêtré)' },
+    { value: '1600x900', label: '1600 x 900 (Fenêtré)' },
+    { value: '1920x1080', label: '1920 x 1080 (Full HD)' },
+    { value: '2560x1440', label: '2560 x 1440 (2K QHD)' },
+    { value: '3840x2160', label: '3840 x 2160 (4K UHD)' },
+    { value: 'fullscreen', label: language === 'en' ? 'Maximized (Modulable & Resizable)' : 'Plein écran modulable (Agrandie & Modulable)' }
+  ];
+
   const handleSave = () => {
     onClose();
   };
@@ -67,7 +102,7 @@ const SettingsModal = ({ onClose }) => {
       backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center'
     }}>
       <div className="settings-card glass-panel" style={{
-        width: '640px', height: '520px', display: 'flex', overflow: 'hidden',
+        width: '640px', height: '560px', display: 'flex', overflow: 'hidden',
         boxShadow: '0 30px 80px rgba(0,0,0,0.6)', border: '1px solid var(--border-bright)'
       }}>
         {/* ── Sidebar ── */}
@@ -95,6 +130,15 @@ const SettingsModal = ({ onClose }) => {
                   value={language} 
                   onChange={setLanguage} 
                   options={langOptions} 
+                />
+              </div>
+
+              <div className="setting-group">
+                <label className="setting-label"><Monitor size={14} /> {t.game_resolution || 'Résolution du jeu'}</label>
+                <CustomDropdown 
+                  value={resolution || '1280x720'} 
+                  onChange={setResolution} 
+                  options={resOptions} 
                 />
               </div>
 
@@ -184,6 +228,43 @@ const SettingsModal = ({ onClose }) => {
                       <div style={{ width: `${progress}%`, height: '100%', background: 'var(--purple)', transition: 'width 0.2s ease' }} />
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* ── VÉRIFICATION DES MAJ ── */}
+              <div className="setting-group" style={{ borderTop: '1px solid var(--border)', paddingTop: '20px', marginTop: '10px' }}>
+                <label className="setting-label"><RefreshCw size={14} /> {t.updates_label}</label>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                  {t.updates_desc}
+                </div>
+                <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                  <button 
+                    onClick={handleCheckUpdates} 
+                    className="btn-secondary" 
+                    disabled={checkingUpdate}
+                    style={{ 
+                      padding: '8px 16px', 
+                      fontSize: '11px', 
+                      cursor: checkingUpdate ? 'not-allowed' : 'pointer',
+                      opacity: checkingUpdate ? 0.6 : 1,
+                      background: 'rgba(168,85,247,0.1)',
+                      border: '1px solid rgba(168,85,247,0.3)',
+                      borderRadius: '6px',
+                      color: 'var(--crystal)',
+                      fontWeight: '600',
+                      letterSpacing: '1px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <RefreshCw size={12} className={checkingUpdate ? 'spin' : ''} />
+                    {checkingUpdate ? 'RECHERCHE...' : t.updates_btn}
+                  </button>
+                  <span style={{ fontSize: '11px', color: checkingUpdate ? 'var(--purple-light)' : 'var(--crystal)', fontWeight: 600 }}>
+                    {updateStatusText}
+                  </span>
                 </div>
               </div>
             </div>

@@ -1,5 +1,21 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import React, { useState, useEffect } from 'react';
-import { X, Lightbulb, RefreshCw, AlertTriangle, CheckCircle, Download, Package, Zap, Shield, Compass, Clock, Calendar, Users, User } from 'lucide-react';
+import { X, Lightbulb, RefreshCw, AlertTriangle, CheckCircle, Download, Package, Zap, Shield, Compass, Clock, Calendar, Users, User, Info } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import HomeView from './views/HomeView';
@@ -26,7 +42,8 @@ function App() {
   const [fullscreenImage, setFullscreenImage] = useState(null);
   const [activeChatFriend, setActiveChatFriend] = useState(null);
   const [crashData, setCrashData] = useState(null);
-  
+  const [elderAlert, setElderAlert] = useState(null); // Custom ElderSea Dialog/Alert
+
   const [inspectedUser, setInspectedUser] = useState(null);
   const [inspectedUserDetails, setInspectedUserDetails] = useState(null);
   const [isInspectedLoading, setIsInspectedLoading] = useState(false);
@@ -68,7 +85,7 @@ function App() {
     if (!dateStr) return t.offline;
     const diff = (Date.now() - new Date(dateStr).getTime()) / 1000 / 60;
     if (diff <= 3) return t.online_launcher;
-    
+
     try {
       const d = new Date(dateStr);
       return d.toLocaleString(lang === 'en' ? 'en-US' : 'fr-FR', {
@@ -89,7 +106,7 @@ function App() {
       setInspectedUserDetails(null);
       return;
     }
-    
+
     let isMounted = true;
     const fetchInspectedUser = async () => {
       setIsInspectedLoading(true);
@@ -134,7 +151,7 @@ function App() {
   // Periodic status ping for the logged-in user
   useEffect(() => {
     if (!isLoggedIn || !user) return;
-    
+
     let resolvedUserId = null;
 
     const pingStatus = async () => {
@@ -156,7 +173,7 @@ function App() {
               body: JSON.stringify({ isOnline: true })
             });
             // Vérifier et livrer d'éventuels achats en attente
-            await fetch(`https://eldersea.tekao.fr/api/shop/deliver-pending?pseudo=${encodeURIComponent(pseudo)}`).catch(() => {});
+            await fetch(`https://eldersea.tekao.fr/api/shop/deliver-pending?pseudo=${encodeURIComponent(pseudo)}`).catch(() => { });
           }
         }
       } catch (err) {
@@ -176,7 +193,7 @@ function App() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ isOnline: false })
           });
-        } catch (e) {}
+        } catch (e) { }
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -187,7 +204,7 @@ function App() {
       handleBeforeUnload();
     };
   }, [isLoggedIn, user]);
-  
+
   // Download progress state
   const [downloadInfo, setDownloadInfo] = useState(null);
   const downloadTracker = React.useRef({
@@ -239,7 +256,7 @@ function App() {
         const now = Date.now();
         lastUpdate = now;
         const tracker = downloadTracker.current;
-        
+
         let progress = 0;
         if (data.total && data.total > 0) {
           progress = Math.min(100, Math.round((data.task / data.total) * 100));
@@ -257,39 +274,54 @@ function App() {
         tracker.currentProgress = Math.max(tracker.currentProgress || 0, progress);
 
         // Calculate global remaining time across the entire download
-        let remainingText = 'Calcul du temps restant...';
-        if (tracker.sessionStartTime && tracker.currentProgress > 1 && tracker.currentProgress < 100) {
-          const totalElapsed = (now - tracker.sessionStartTime) / 1000;
-          if (totalElapsed >= 1) {
-            const estimatedTotalSeconds = totalElapsed / (tracker.currentProgress / 100);
-            const rawRemaining = Math.max(0, estimatedTotalSeconds - totalElapsed);
-            tracker.smoothRemaining = tracker.smoothRemaining === null 
-              ? rawRemaining 
-              : tracker.smoothRemaining * 0.8 + rawRemaining * 0.2;
+        let remainingText = '';
+        if (tracker.sessionStartTime && tracker.currentProgress > 0 && tracker.currentProgress < 100) {
+          const totalElapsed = Math.max(0.2, (now - tracker.sessionStartTime) / 1000);
+          const estimatedTotalSeconds = totalElapsed / (tracker.currentProgress / 100);
+          const rawRemaining = Math.max(0, estimatedTotalSeconds - totalElapsed);
+          tracker.smoothRemaining = tracker.smoothRemaining === null
+            ? rawRemaining
+            : tracker.smoothRemaining * 0.7 + rawRemaining * 0.3;
 
-            const rem = Math.round(tracker.smoothRemaining);
-            if (rem < 60) {
-              remainingText = `Temps total restant : ~${rem}s`;
-            } else {
-              const mins = Math.floor(rem / 60);
-              const secs = rem % 60;
-              remainingText = `Temps total restant : ~${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
-            }
+          const rem = Math.max(1, Math.round(tracker.smoothRemaining));
+          if (rem < 60) {
+            remainingText = `~${rem}s restant`;
+          } else {
+            const mins = Math.floor(rem / 60);
+            const secs = rem % 60;
+            remainingText = `~${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
           }
         } else if (progress >= 100 || data.type === 'finished') {
-          remainingText = 'Téléchargement terminé';
+          remainingText = 'Terminé';
           tracker.sessionStartTime = null;
+        } else {
+          remainingText = 'Estimation...';
         }
-        
+
+        let currentSpeed = data.speed;
+        if (!currentSpeed && data.fileCurrent && data.fileTotal) {
+          const dt = (now - (tracker.lastByteTick || now)) / 1000;
+          if (dt >= 0.4) {
+            const deltaBytes = Math.max(0, data.fileCurrent - (tracker.lastFileBytes || 0));
+            tracker.lastFileBytes = data.fileCurrent;
+            tracker.lastByteTick = now;
+            const bps = deltaBytes / dt;
+            if (bps >= 1048576) currentSpeed = (bps / 1048576).toFixed(1) + ' Mo/s';
+            else if (bps >= 1024) currentSpeed = Math.round(bps / 1024) + ' Ko/s';
+          }
+        }
+
         setDownloadInfo(prev => ({
           type: data.type || (prev?.type || '...'),
           progress: progress > 0 ? progress : (prev?.progress || 0),
           task: data.task || 0,
           total: data.total || 100,
           filename: data.filename || null,
+          speed: currentSpeed || prev?.speed || null,
+          bytesText: data.bytesText || prev?.bytesText || '0.0 Mo',
           remainingText: remainingText
         }));
-        
+
         if (data.type === 'finished') {
           setTimeout(() => setDownloadInfo(null), 3000);
         }
@@ -297,10 +329,10 @@ function App() {
 
       const handleProgress = (event, data) => {
         const now = Date.now();
-        const isCritical = 
-          !data.task || 
-          data.task === data.total || 
-          data.type === 'finished' || 
+        const isCritical =
+          !data.task ||
+          data.task === data.total ||
+          data.type === 'finished' ||
           data.type === 'Décollage...' ||
           data.type === 'Extraction de Java...' ||
           data.type === 'Chargement Forge...';
@@ -361,12 +393,28 @@ function App() {
         setUpdateState(data);
       };
 
+      const handleShowToast = (event, toast) => {
+        if (toast) {
+          setElderAlert({
+            title: toast.title || 'NOTIFICATION ELDERSEA',
+            message: toast.message || '',
+            type: toast.type || 'info'
+          });
+        }
+      };
+
+      const handleTriggerVerifyFiles = () => {
+        setIsSettingsOpen(true);
+      };
+
       window.ipcRenderer.on('launch-progress', handleProgress);
       window.ipcRenderer.on('launch-finished', handleFinished);
       window.ipcRenderer.on('launch-error', handleError);
       window.ipcRenderer.on('game-crashed', handleGameCrashed);
       window.ipcRenderer.on('hide-progress', () => setDownloadInfo(null));
       window.ipcRenderer.on('update-status', handleUpdateStatus);
+      window.ipcRenderer.on('show-toast', handleShowToast);
+      window.ipcRenderer.on('trigger-verify-files', handleTriggerVerifyFiles);
 
       return () => {
         if (updateTimeout) clearTimeout(updateTimeout);
@@ -375,8 +423,35 @@ function App() {
         window.ipcRenderer.removeAllListeners('launch-error');
         window.ipcRenderer.removeAllListeners('game-crashed');
         window.ipcRenderer.removeAllListeners('update-status');
+        window.ipcRenderer.removeAllListeners('show-toast');
+        window.ipcRenderer.removeAllListeners('trigger-verify-files');
       };
     }
+  }, []);
+
+  // Custom ElderSea global alert override so NO standard browser alert is ever displayed!
+  useEffect(() => {
+    window.alert = (msg) => {
+      const text = String(msg || '');
+      const isErr = text.toLowerCase().includes('erreur') || 
+                    text.toLowerCase().includes('échec') || 
+                    text.toLowerCase().includes('impossible') ||
+                    text.toLowerCase().includes('interdit') ||
+                    text.toLowerCase().includes('invalide');
+      setElderAlert({
+        title: isErr ? 'ATTENTION' : 'NOTIFICATION ELDERSEA',
+        message: text,
+        type: isErr ? 'error' : 'info'
+      });
+    };
+
+    window.showElderAlert = (message, type = 'info', title = null) => {
+      setElderAlert({
+        title: title || (type === 'error' ? 'ERREUR' : type === 'success' ? 'SUCCÈS' : 'NOTIFICATION ELDERSEA'),
+        message: String(message || ''),
+        type
+      });
+    };
   }, []);
 
   const handleInstallUpdate = () => {
@@ -390,7 +465,7 @@ function App() {
       const parts = filename.split('/');
       return `.eldersea/${parts.slice(0, -1).join('/')}`;
     }
-    
+
     switch (type?.toLowerCase()) {
       case 'assets':
         return '.eldersea/assets';
@@ -423,14 +498,14 @@ function App() {
   };
 
   return (
-    <div className="app-container" onClick={handleAppClick} style={{ 
+    <div className="app-container" onClick={handleAppClick} style={{
       display: 'flex', height: '100vh', width: '100vw', background: 'var(--bg-dark)',
       overflow: 'hidden', color: 'var(--text-primary)', fontFamily: 'Outfit, sans-serif'
     }}>
       <div className="bg-layer" />
-      <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenAuth={() => setIsAuthModalOpen(true)}
         isProfileOpen={isProfileOpen}
@@ -438,20 +513,20 @@ function App() {
         setActiveChatFriend={setActiveChatFriend}
         onInspectUser={setInspectedUser}
       />
-      
+
       <main className="main-content">
-        <TopBar 
-          onOpenAuth={() => setIsAuthModalOpen(true)} 
+        <TopBar
+          onOpenAuth={() => setIsAuthModalOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
           setActiveTab={setActiveTab}
           isProfileOpen={isProfileOpen}
           onToggleProfile={() => setIsProfileOpen(!isProfileOpen)}
         />
-        
+
         <div className="view-container fade-in" key={activeTab}>
           {activeTab === 'home' && (
-            <HomeView 
-              onOpenAuth={() => setIsAuthModalOpen(true)} 
+            <HomeView
+              onOpenAuth={() => setIsAuthModalOpen(true)}
               setSelectedNews={setSelectedNews}
             />
           )}
@@ -461,8 +536,8 @@ function App() {
           {activeTab === 'shop' && <ShopView />}
           {activeTab === 'profile' && <ProfileView />}
           {activeTab === 'friends' && (
-            <FriendsView 
-              setFullscreen={setFullscreenImage} 
+            <FriendsView
+              setFullscreen={setFullscreenImage}
               activeChatFriend={activeChatFriend}
               setActiveChatFriend={setActiveChatFriend}
               onInspectUser={setInspectedUser}
@@ -474,15 +549,15 @@ function App() {
       {isAuthModalOpen && <AuthModal onClose={() => setIsAuthModalOpen(false)} />}
       {isSettingsOpen && <SettingsModal onClose={() => setIsSettingsOpen(false)} />}
       <CrashModal isOpen={!!crashData} data={crashData} onClose={() => setCrashData(null)} />
-      
+
       {fullscreenImage && (
-        <div className="fullscreen-overlay" onClick={() => setFullscreenImage(null)} style={{ 
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.96)', zIndex: 9999, 
+        <div className="fullscreen-overlay" onClick={() => setFullscreenImage(null)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.96)', zIndex: 9999,
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out'
         }}>
-          <img 
-            src={fullscreenImage} 
-            style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: '12px', border: '1px solid var(--border-bright)', boxShadow: '0 0 100px rgba(0,0,0,1)' }} 
+          <img
+            src={fullscreenImage}
+            style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: '12px', border: '1px solid var(--border-bright)', boxShadow: '0 0 100px rgba(0,0,0,1)' }}
           />
         </div>
       )}
@@ -490,54 +565,80 @@ function App() {
       {/* ── DOWNLOAD PROGRESS BUBBLE ── */}
       {downloadInfo && (
         <div className="download-bubble premium-float-bubble" style={{
-          position: 'fixed', bottom: '30px', right: '30px', width: '340px',
-          padding: '20px', zIndex: 10000, display: 'flex', flexDirection: 'column', gap: '12px'
+          position: 'fixed', bottom: '26px', right: '26px', width: '320px',
+          padding: '14px 16px', zIndex: 10000, display: 'flex', flexDirection: 'column', gap: '8px',
+          background: 'rgba(12, 14, 22, 0.92)', backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(212, 175, 55, 0.25)', borderRadius: '14px',
+          boxShadow: '0 15px 35px rgba(0,0,0,0.65)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div className="premium-orb">
-              {downloadInfo.type === 'launching' ? <Zap size={18} color="var(--purple)" /> : <Download size={18} color="var(--purple)" />}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="cinzel" style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--crystal)' }}>
-                {downloadInfo.type === 'launching' ? 'LANCEMENT DU JEU...' : 'TÉLÉCHARGEMENT...'}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', color: 'var(--text-dim)', marginTop: '2px', textTransform: 'uppercase' }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
-                  {downloadInfo.type}
-                </span>
-                <span style={{ fontFamily: 'monospace', color: 'var(--purple-light)', fontWeight: 700, flexShrink: 0 }}>
-                  {formatProgressDetail(downloadInfo.task, downloadInfo.total)} ({downloadInfo.progress}%)
-                </span>
-              </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '6px', fontSize: '9px', color: 'var(--text-muted)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Dossier : <strong style={{ color: 'var(--crystal)' }}>{getTargetFolder(downloadInfo.type, downloadInfo.filename)}</strong></span>
-                  <span style={{ color: 'var(--purple-light)', fontWeight: 700, fontFamily: 'monospace' }}>{downloadInfo.remainingText || 'Calcul...'}</span>
-                </div>
-                {downloadInfo.filename && (
-                  <div 
-                    style={{ 
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      opacity: 0.7, fontFamily: 'monospace'
-                    }}
-                    title={downloadInfo.filename}
-                  >
-                    Fichier : {downloadInfo.filename.includes('/') ? downloadInfo.filename.split('/').slice(1).join('/') : downloadInfo.filename}
-                  </div>
+          {/* Header Row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              <div style={{
+                width: '30px', height: '30px', borderRadius: '8px',
+                background: 'rgba(212, 175, 55, 0.12)', border: '1px solid rgba(212, 175, 55, 0.28)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                {downloadInfo.type === 'launching' || downloadInfo.type?.includes('Décollage') || downloadInfo.type?.includes('Forge') ? (
+                  <Zap size={15} color="var(--purple-light)" />
+                ) : (
+                  <Download size={15} color="var(--crystal)" />
                 )}
               </div>
+              <div style={{ minWidth: 0 }}>
+                <div className="cinzel" style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.8px', color: 'var(--crystal)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {downloadInfo.type === 'launching' ? 'LANCEMENT DU JEU' : 'TÉLÉCHARGEMENT'}
+                </div>
+                <div style={{ fontSize: '9px', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {downloadInfo.filename ? (downloadInfo.filename.includes('/') ? downloadInfo.filename.split('/').pop() : downloadInfo.filename) : downloadInfo.type}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+              {downloadInfo.speed && downloadInfo.speed !== '0 Ko/s' && downloadInfo.speed !== '—' && (
+                <span style={{
+                  fontSize: '9px', fontWeight: 700, color: '#34d399',
+                  background: 'rgba(52, 211, 153, 0.12)', border: '1px solid rgba(52, 211, 153, 0.25)',
+                  padding: '1px 5px', borderRadius: '4px', fontFamily: 'monospace'
+                }}>
+                  {downloadInfo.speed}
+                </span>
+              )}
+              <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--crystal)', fontFamily: 'monospace' }}>
+                {downloadInfo.progress}%
+              </span>
             </div>
           </div>
 
-          <div style={{ height: '8px', width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.03)' }}>
-            <div 
+          {/* Progress Bar */}
+          <div style={{ height: '5px', width: '100%', background: 'rgba(255,255,255,0.06)', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.03)' }}>
+            <div
               className="progress-bar-animated"
-              style={{ 
-                height: '100%', width: `${downloadInfo.progress}%`, 
+              style={{
+                height: '100%', width: `${downloadInfo.progress}%`,
                 boxShadow: '0 0 10px rgba(212,175,55,0.5)', transition: 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-              }} 
+              }}
             />
+          </div>
+
+          {/* Bottom detail row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', color: 'var(--text-muted)' }}>
+            <span style={{ fontFamily: 'monospace', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              {downloadInfo.bytesText && (
+                <span style={{ color: 'var(--crystal)', fontWeight: 700 }}>
+                  {downloadInfo.bytesText}
+                </span>
+              )}
+              {downloadInfo.task && downloadInfo.total ? (
+                <span style={{ color: 'var(--text-dim)', fontSize: '9px' }}>
+                  ({downloadInfo.task}/{downloadInfo.total})
+                </span>
+              ) : ''}
+            </span>
+            <span style={{ color: '#fbbf24', fontWeight: 700, fontFamily: 'monospace' }}>
+              {downloadInfo.remainingText || ''}
+            </span>
           </div>
         </div>
       )}
@@ -554,9 +655,9 @@ function App() {
             boxShadow: '0 25px 60px rgba(0,0,0,0.85)', display: 'flex', flexDirection: 'column',
             alignItems: 'center', gap: '24px', textAlign: 'center', position: 'relative'
           }}>
-            
+
             {updateState.status === 'error' && (
-              <button 
+              <button
                 onClick={() => setUpdateState(null)}
                 style={{
                   position: 'absolute', top: '15px', right: '15px', background: 'transparent',
@@ -570,26 +671,26 @@ function App() {
             {/* Icon container */}
             <div className="pulse-icon" style={{
               background: updateState.status === 'error' ? 'rgba(239,68,68,0.15)' : updateState.status === 'downloaded' ? 'rgba(16,185,129,0.15)' : 'rgba(212,175,55,0.15)',
-              padding: '20px', borderRadius: '50%', 
+              padding: '20px', borderRadius: '50%',
               color: updateState.status === 'error' ? '#ef4444' : updateState.status === 'downloaded' ? '#10b981' : 'var(--purple-light)',
               display: 'flex', alignItems: 'center', justifyContent: 'center'
             }}>
-              {updateState.status === 'error' ? <AlertTriangle size={36} /> : 
-               updateState.status === 'downloaded' ? <CheckCircle size={36} /> : 
-               <RefreshCw size={36} className="spin-icon" />}
+              {updateState.status === 'error' ? <AlertTriangle size={36} /> :
+                updateState.status === 'downloaded' ? <CheckCircle size={36} /> :
+                  <RefreshCw size={36} className="spin-icon" />}
             </div>
 
             {/* Texts */}
             <div>
               <h2 className="cinzel" style={{ margin: 0, fontSize: '18px', fontWeight: 800, letterSpacing: '1px', color: 'white' }}>
-                {updateState.status === 'error' ? 'ÉCHEC DE LA MISE À JOUR' : 
-                 updateState.status === 'downloaded' ? 'MISE À JOUR PRÊTE !' : 
-                 'MISE À JOUR EN COURS'}
+                {updateState.status === 'error' ? 'ÉCHEC DE LA MISE À JOUR' :
+                  updateState.status === 'downloaded' ? 'MISE À JOUR PRÊTE !' :
+                    'MISE À JOUR EN COURS'}
               </h2>
               <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', lineHeight: 1.5 }}>
-                {updateState.status === 'error' ? 'Une erreur est survenue lors du téléchargement de la mise à jour.' : 
-                 updateState.status === 'downloaded' ? `La nouvelle version (${updateState.version}) de ElderSea a été téléchargée avec succès et est prête.` : 
-                 `Une mise à jour importante de ElderSea est en cours de téléchargement.`}
+                {updateState.status === 'error' ? 'Une erreur est survenue lors du téléchargement de la mise à jour.' :
+                  updateState.status === 'downloaded' ? `La nouvelle version (${updateState.version}) de ElderSea a été téléchargée avec succès et est prête.` :
+                    `Une mise à jour importante de ElderSea est en cours de téléchargement.`}
               </p>
             </div>
 
@@ -611,7 +712,7 @@ function App() {
             )}
 
             {updateState.status === 'downloaded' && (
-              <button 
+              <button
                 onClick={handleInstallUpdate}
                 style={{
                   width: '100%', padding: '14px', background: 'linear-gradient(135deg, var(--purple) 0%, var(--purple-dark, #4c1d95) 100%)',
@@ -633,7 +734,7 @@ function App() {
                 }}>
                   {updateState.message}
                 </div>
-                <button 
+                <button
                   onClick={() => setUpdateState(null)}
                   style={{
                     width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)',
@@ -651,7 +752,81 @@ function App() {
         </div>
       )}
 
-      <style dangerouslySetInnerHTML={{ __html: `
+      {/* ── CUSTOM ELDERSEA ALERT / ERROR / NOTIFICATION DIALOG ── */}
+      {elderAlert && (
+        <div 
+          className="modal-overlay fade-in" 
+          onClick={() => setElderAlert(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 12000,
+            background: 'rgba(5, 8, 15, 0.85)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div 
+            className="glass-panel" 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: '440px',
+              background: 'linear-gradient(135deg, rgba(20, 26, 42, 0.96), rgba(12, 16, 28, 0.98))',
+              border: elderAlert.type === 'error' ? '1px solid rgba(239, 68, 68, 0.45)' : elderAlert.type === 'success' ? '1px solid rgba(16, 185, 129, 0.45)' : '1px solid rgba(212, 175, 55, 0.45)',
+              borderRadius: '16px',
+              padding: '28px 24px',
+              boxShadow: elderAlert.type === 'error' ? '0 20px 60px rgba(239, 68, 68, 0.25)' : '0 20px 60px rgba(0, 0, 0, 0.85)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '16px',
+              animation: 'scaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+          >
+            <div style={{
+              width: '56px', height: '56px', borderRadius: '50%',
+              background: elderAlert.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : elderAlert.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(212, 175, 55, 0.15)',
+              border: elderAlert.type === 'error' ? '1px solid rgba(239, 68, 68, 0.35)' : elderAlert.type === 'success' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(212, 175, 55, 0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              {elderAlert.type === 'error' ? (
+                <AlertTriangle size={28} color="#ef4444" />
+              ) : elderAlert.type === 'success' ? (
+                <CheckCircle size={28} color="#10b981" />
+              ) : (
+                <Info size={28} color="var(--crystal)" />
+              )}
+            </div>
+
+            <div style={{ width: '100%' }}>
+              <h3 className="cinzel" style={{
+                fontSize: '15px', fontWeight: 800, letterSpacing: '2px',
+                color: elderAlert.type === 'error' ? '#fca5a5' : 'var(--crystal)',
+                margin: '0 0 8px 0'
+              }}>
+                {elderAlert.title || (elderAlert.type === 'error' ? 'ATTENTION' : 'NOTIFICATION')}
+              </h3>
+              <p style={{
+                fontSize: '12px', color: 'var(--text-dim)', lineHeight: '1.6', margin: 0,
+                whiteSpace: 'pre-line', wordBreak: 'break-word'
+              }}>
+                {elderAlert.message}
+              </p>
+            </div>
+
+            <button
+              onClick={() => setElderAlert(null)}
+              className="btn-primary"
+              style={{
+                width: '100%', padding: '10px 0', fontSize: '12px', fontWeight: 700,
+                letterSpacing: '1.5px', marginTop: '4px'
+              }}
+            >
+              COMPRIS
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .pulse-icon { animation: pulse 2s infinite; }
         .spin-icon { animation: spin 2s linear infinite; }
         @keyframes pulse {
@@ -675,7 +850,7 @@ function App() {
             overflow: 'hidden', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8)',
             animation: 'fadeIn 0.3s ease'
           }}>
-            <button 
+            <button
               onClick={() => setSelectedNews(null)}
               style={{
                 position: 'absolute', top: '20px', right: '20px', zIndex: 10, width: '36px', height: '36px',
@@ -708,7 +883,7 @@ function App() {
 
             <div style={{ padding: '40px', overflowY: 'auto', flex: 1 }}>
               <div style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: 1.8, marginBottom: '40px' }} dangerouslySetInnerHTML={{ __html: selectedNews.content || '' }}></div>
-              
+
               {selectedNews.tip && (
                 <div style={{
                   background: 'rgba(10, 13, 26, 0.8)', border: '1px solid rgba(212,175,55,0.3)', borderRadius: '12px',
@@ -733,16 +908,16 @@ function App() {
 
       {/* ── 3D SKIN INSPECTION MODAL ── */}
       {inspectedUser && (
-        <div 
-          className="modal-overlay fade-in" 
+        <div
+          className="modal-overlay fade-in"
           style={{
             position: 'fixed', inset: 0, zIndex: 4000, background: 'rgba(0,0,0,0.85)',
             backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center'
           }}
           onClick={() => setInspectedUser(null)}
         >
-          <div 
-            className="glass-panel" 
+          <div
+            className="glass-panel"
             style={{
               width: '580px', background: 'var(--bg-card)', border: '1px solid var(--border-bright)',
               borderRadius: '20px', padding: '30px', position: 'relative', overflow: 'hidden',
@@ -753,10 +928,10 @@ function App() {
           >
             {/* Top border glow line */}
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, var(--purple), transparent)' }} />
-            
+
             {/* Close button */}
-            <button 
-              onClick={() => setInspectedUser(null)} 
+            <button
+              onClick={() => setInspectedUser(null)}
               style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', zIndex: 10 }}
             >
               <X size={20} />
@@ -790,12 +965,12 @@ function App() {
                   {inspectedUser.toUpperCase()}
                 </h2>
                 {inspectedUserDetails && (
-                  <span 
+                  <span
                     style={{
                       width: '8px', height: '8px', borderRadius: '50%',
                       background: getStatusColor(inspectedUserDetails.lastActive).bg,
                       boxShadow: getStatusColor(inspectedUserDetails.lastActive).glow
-                    }} 
+                    }}
                   />
                 )}
               </div>
@@ -853,7 +1028,7 @@ function App() {
         </div>
       )}
 
-      <MediaPlayer isHidden={!!downloadInfo || activeTab !== 'home'} />
+      {/* <MediaPlayer isHidden={!!downloadInfo || activeTab !== 'home'} /> */}
     </div>
   );
 }

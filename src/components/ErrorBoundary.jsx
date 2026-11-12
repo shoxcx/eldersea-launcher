@@ -19,7 +19,11 @@ class ErrorBoundary extends React.Component {
   handleCopy = () => {
     const errText = `${this.state.error}\n\n${this.state.errorInfo?.componentStack}`;
     navigator.clipboard.writeText(errText);
-    alert('Erreur copiée dans le presse-papier !');
+    if (window.showElderAlert) {
+      window.showElderAlert('Les informations d\'erreur ont été copiées dans le presse-papiers.', 'success', 'COPIÉ');
+    } else {
+      alert('Erreur copiée dans le presse-papier !');
+    }
   };
 
   handleClose = () => {

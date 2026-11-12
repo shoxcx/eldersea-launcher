@@ -1,12 +1,22 @@
 import React from 'react';
 import { useSettingsStore, useAuthStore } from '../store/useStore';
 import { translations } from '../translations';
-import { Home, Package, Camera, ShoppingBag, Settings, User, ChevronDown, LogOut, ChevronUp, Users } from 'lucide-react';
+import { Home, Package, Camera, ShoppingBag, Settings, User, ChevronDown, LogOut, ChevronUp, Users, UserPlus } from 'lucide-react';
 import packageJson from '../../package.json';
 
 const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfileOpen, onToggleProfile, setActiveChatFriend, onInspectUser }) => {
   const { language } = useSettingsStore();
-  const { user, isLoggedIn, logout } = useAuthStore();
+  const { user, isLoggedIn, logout, accounts, switchAccount, removeAccount } = useAuthStore();
+  const [isAccountsMenuOpen, setIsAccountsMenuOpen] = React.useState(true);
+
+  const effectiveAccounts = React.useMemo(() => {
+    if (!isLoggedIn || !user) return [];
+    const list = Array.isArray(accounts) ? [...accounts] : [];
+    if (!list.some(a => (a.pseudo || '').toLowerCase() === (user.pseudo || '').toLowerCase())) {
+      list.unshift(user);
+    }
+    return list;
+  }, [accounts, user, isLoggedIn]);
   const t = translations[language] || translations['fr'];
 
   const getPseudo = () => {
@@ -31,10 +41,10 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
     const requests = Array.isArray(data.requests) ? data.requests : [];
     const friends = Array.isArray(data.friends) ? data.friends : [];
     const messages = Array.isArray(data.messages) ? data.messages : [];
-    
+
     // Count incoming requests
     const incomingReqs = requests.filter(r => r && r.to && r.to.trim().toLowerCase() === curL);
-    
+
     // Count unread messages and track senders
     let unreadCount = 0;
     const unreadMap = {};
@@ -48,7 +58,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
         }
       }
     });
-    
+
     setIncomingCount(incomingReqs.length + unreadCount);
     setFriendsWithUnread(unreadMap);
 
@@ -76,7 +86,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
         console.error("Failed to load sidebar friends via IPC:", e);
       }
     }
-    
+
     // Cloud fallback: eldersea.tekao.fr/api/users/12
     if (!data || !Array.isArray(data.friends)) {
       try {
@@ -104,7 +114,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
         const users = await res.json();
         setApiUsers(users);
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   React.useEffect(() => {
@@ -133,7 +143,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
     if (!pseudo) return { online: false, lastActive: null, avatar: 'https://minotar.net/avatar/Steve/32' };
     const cleanPseudo = pseudo.trim().toLowerCase();
     const found = apiUsers.find(u => u && u.pseudo && u.pseudo.toLowerCase().trim() === cleanPseudo);
-    
+
     let isOnline = false;
     if (found) {
       const isRecent = found.lastActive ? Math.abs(Date.now() - new Date(found.lastActive).getTime()) < 65000 : false;
@@ -236,7 +246,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
       </div>
 
       <div className="sidebar-bottom" style={{ marginTop: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0 }}>
-        
+
         {/* ── REDESIGNED SIDEBAR FRIENDS LIST ── */}
         {isLoggedIn && (
           <div className="sidebar-friends-section" style={{
@@ -254,31 +264,31 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
             boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
             marginBottom: '8px'
           }}
-          onClick={() => {
-            if (!isFriendsExpanded) {
-              setIsFriendsExpanded(true);
-              loadSidebarFriends();
-            }
-          }}
+            onClick={() => {
+              if (!isFriendsExpanded) {
+                setIsFriendsExpanded(true);
+                loadSidebarFriends();
+              }
+            }}
           >
-            <div 
-              className="cinzel" 
+            <div
+              className="cinzel"
               onClick={(e) => {
                 if (isFriendsExpanded) {
                   e.stopPropagation();
                   setIsFriendsExpanded(false);
                 }
               }}
-              style={{ 
-                fontSize: '10px', 
-                letterSpacing: '1.5px', 
-                color: 'var(--text-dim)', 
-                display: 'flex', 
-                alignItems: 'center', 
+              style={{
+                fontSize: '10px',
+                letterSpacing: '1.5px',
+                color: 'var(--text-dim)',
+                display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'space-between',
                 cursor: 'pointer',
-                paddingBottom: isFriendsExpanded ? '8px' : '0px', 
-                borderBottom: isFriendsExpanded ? '1px solid rgba(168, 85, 247, 0.15)' : 'none', 
+                paddingBottom: isFriendsExpanded ? '8px' : '0px',
+                borderBottom: isFriendsExpanded ? '1px solid rgba(168, 85, 247, 0.15)' : 'none',
                 fontWeight: 700,
                 userSelect: 'none',
                 width: '100%'
@@ -286,7 +296,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Users size={13} color="var(--purple-light)" style={{ filter: 'drop-shadow(0 0 4px var(--purple-light))' }} />
-                <span style={{ fontWeight: 800, color: 'var(--crystal)' }}>{t.friends.toUpperCase()}</span>
+                <span style={{ fontWeight: 800, color: 'var(--crystal)' }}>{language === 'en' ? 'FRIENDS LIST' : "LISTE D'AMIS"}</span>
                 {onlineFriendsCount > 0 && (
                   <span style={{
                     background: 'rgba(16, 185, 129, 0.12)',
@@ -325,7 +335,24 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
                 {isFriendsExpanded ? <ChevronUp size={12} color="var(--text-dim)" /> : <ChevronDown size={12} color="var(--text-dim)" />}
               </div>
             </div>
-            <div style={{ display: isFriendsExpanded ? 'flex' : 'none', flexDirection: 'column', gap: '6px', overflowY: 'auto', flex: 1, marginTop: '4px' }}>
+            <div
+              className="custom-scrollbar"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                overflowY: isFriendsExpanded ? 'auto' : 'hidden',
+                flex: 1,
+                maxHeight: isFriendsExpanded ? '180px' : '0px',
+                opacity: isFriendsExpanded ? 1 : 0,
+                pointerEvents: isFriendsExpanded ? 'auto' : 'none',
+                marginTop: isFriendsExpanded ? '4px' : '0px',
+                paddingRight: '4px',
+                transition: 'max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease, margin-top 0.3s ease',
+                scrollbarWidth: 'thin',
+                scrollbarColor: 'var(--purple) transparent'
+              }}
+            >
               {sidebarFriends.length === 0 ? (
                 <div style={{ fontSize: '10px', color: 'var(--text-muted)', textAlign: 'center', padding: '15px 0' }}>
                   {t.no_friends}
@@ -335,7 +362,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
                   const details = getFriendDetails(friend);
                   const statusColor = getStatusColor(details.online);
                   return (
-                    <div 
+                    <div
                       key={friend}
                       onClick={() => handleFriendClick(friend)}
                       style={{
@@ -352,11 +379,11 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
                       className="sidebar-friend-item"
                     >
                       <div style={{ position: 'relative', display: 'flex' }}>
-                        <img 
-                          src={details.avatar} 
-                          alt="avatar" 
+                        <img
+                          src={details.avatar}
+                          alt="avatar"
                           onClick={(e) => { e.stopPropagation(); onInspectUser(friend); }}
-                          style={{ width: '18px', height: '18px', borderRadius: '3px', imageRendering: 'pixelated', border: '1px solid rgba(255,255,255,0.05)', cursor: 'zoom-in' }} 
+                          style={{ width: '18px', height: '18px', borderRadius: '3px', imageRendering: 'pixelated', border: '1px solid rgba(255,255,255,0.05)', cursor: 'zoom-in' }}
                           title="Inspecter le profil"
                         />
                         {friendsWithUnread[friend.toLowerCase()] > 0 && (
@@ -380,12 +407,12 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
                       <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {friend}
                       </span>
-                      <span 
+                      <span
                         style={{
                           width: '5px', height: '5px', borderRadius: '50%',
                           background: statusColor.bg,
                           boxShadow: statusColor.glow
-                        }} 
+                        }}
                       />
                     </div>
                   );
@@ -404,7 +431,7 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
             </div>
           ) : (
             <div style={{ position: 'relative' }}>
-              <div 
+              <div
                 className="sidebar-user-pill"
                 onClick={(e) => { e.stopPropagation(); onToggleProfile(); }}
                 style={{
@@ -417,7 +444,12 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
                 <img src={getSkinHead()} alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '4px', imageRendering: 'pixelated' }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '13px', fontWeight: 800, color: '#f3e5ab', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getPseudo().toUpperCase()}</div>
-                  <div style={{ fontSize: '9px', color: isPremium ? '#34d399' : '#f87171', fontWeight: 700 }}>{isPremium ? 'PREMIUM' : 'CRACK'}</div>
+                  <div style={{ fontSize: '9px', color: '#34d399', fontWeight: 700 }}>
+                    {(() => {
+                      const found = apiUsers.find(u => u && u.pseudo && u.pseudo.toLowerCase() === getPseudo().toLowerCase());
+                      return (found?.rank || (isPremium ? 'PREMIUM' : 'CRACK')).toUpperCase();
+                    })()}
+                  </div>
                 </div>
                 <ChevronUp size={14} color="var(--text-dim)" style={{ transform: isProfileOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }} />
                 {incomingCount > 0 && (
@@ -436,6 +468,12 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
                   position: 'absolute', bottom: 'calc(100% + 10px)', left: 0, right: 0, zIndex: 2005, padding: '6px',
                   boxShadow: '0 -10px 40px rgba(0,0,0,0.6)', background: 'var(--bg-panel)'
                 }}>
+                  {/* 1. Mon Profil */}
+                  <div className="dropdown-item" onClick={(e) => { e.stopPropagation(); setActiveTab('profile'); onToggleProfile(); }}>
+                    <User size={14} /> <span>{t.profile}</span>
+                  </div>
+
+                  {/* 2. Amis & Tchat */}
                   <div className="dropdown-item" onClick={(e) => { e.stopPropagation(); setActiveTab('friends'); onToggleProfile(); }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <Users size={14} /> <span>{t.friends}</span>
@@ -450,10 +488,112 @@ const Sidebar = ({ activeTab, setActiveTab, onOpenSettings, onOpenAuth, isProfil
                       </span>
                     )}
                   </div>
-                  <div className="dropdown-item" onClick={(e) => { e.stopPropagation(); setActiveTab('profile'); onToggleProfile(); }}>
-                    <User size={14} /> <span>{t.profile}</span>
+
+                  {/* 3. Liste des comptes (si plusieurs comptes connectés) */}
+                  {effectiveAccounts.length > 1 && (
+                    <div style={{ marginTop: '2px', marginBottom: '2px' }}>
+                      <div 
+                        className="dropdown-item"
+                        onClick={(e) => { e.stopPropagation(); setIsAccountsMenuOpen(!isAccountsMenuOpen); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '8px 10px', borderRadius: '6px', cursor: 'pointer',
+                          background: isAccountsMenuOpen ? 'rgba(212,175,55,0.08)' : 'transparent',
+                          color: 'var(--crystal)', fontWeight: 600
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Users size={13} color="#d4af37" />
+                          <span>{t.accounts_list || 'Liste des comptes'}</span>
+                          <span style={{
+                            fontSize: '9px', background: 'rgba(212,175,55,0.25)', color: '#f3e5ab',
+                            padding: '1px 5px', borderRadius: '8px', fontWeight: 'bold'
+                          }}>
+                            {effectiveAccounts.length}
+                          </span>
+                        </div>
+                        <ChevronDown 
+                          size={13} 
+                          color="var(--text-dim)" 
+                          style={{ transform: isAccountsMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s' }} 
+                        />
+                      </div>
+
+                      {isAccountsMenuOpen && (
+                        <div style={{
+                          marginTop: '3px', marginLeft: '6px', paddingLeft: '8px',
+                          borderLeft: '2px solid rgba(212,175,55,0.25)',
+                          display: 'flex', flexDirection: 'column', gap: '3px',
+                          maxHeight: '130px', overflowY: 'auto'
+                        }}>
+                          {effectiveAccounts.map((acc) => {
+                            const isCurrent = (acc.pseudo || '').toLowerCase() === (user?.pseudo || '').toLowerCase();
+                            return (
+                              <div
+                                key={acc.pseudo}
+                                className="dropdown-item"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!isCurrent) {
+                                    switchAccount(acc.pseudo);
+                                    onToggleProfile();
+                                  }
+                                }}
+                                style={{
+                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                  padding: '5px 8px', borderRadius: '6px',
+                                  background: isCurrent ? 'rgba(212,175,55,0.14)' : 'rgba(255,255,255,0.02)',
+                                  border: isCurrent ? '1px solid rgba(212,175,55,0.3)' : '1px solid transparent',
+                                  cursor: isCurrent ? 'default' : 'pointer'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                                  <img 
+                                    src={`https://minotar.net/avatar/${acc.pseudo}/32`} 
+                                    alt={acc.pseudo} 
+                                    style={{ width: '18px', height: '18px', borderRadius: '3px', imageRendering: 'pixelated' }} 
+                                  />
+                                  <span style={{
+                                    fontSize: '11px', fontWeight: isCurrent ? 800 : 600,
+                                    color: isCurrent ? '#f3e5ab' : 'var(--text-dim)',
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                                  }}>
+                                    {acc.pseudo}
+                                  </span>
+                                </div>
+                                {isCurrent ? (
+                                  <span style={{
+                                    fontSize: '8px', fontWeight: 'bold', color: '#34d399',
+                                    background: 'rgba(52,211,153,0.15)', padding: '1px 5px',
+                                    borderRadius: '3px', border: '1px solid rgba(52,211,153,0.3)'
+                                  }}>
+                                    {t.active || 'Actif'}
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '9px', color: 'var(--purple-light)', fontWeight: 600 }}>
+                                    {t.switch || 'Swap'}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 4. + Ajouter un compte */}
+                  <div 
+                    className="dropdown-item" 
+                    onClick={(e) => { e.stopPropagation(); onOpenAuth(); onToggleProfile(); }}
+                    style={{ color: '#d4af37' }}
+                  >
+                    <UserPlus size={14} /> <span>{t.add_account || '+ Ajouter un compte'}</span>
                   </div>
+
                   <div style={{ height: '1px', background: 'rgba(255,255,255,0.05)', margin: '6px 4px' }} />
+
+                  {/* 5. Se déconnecter */}
                   <div className="dropdown-item" onClick={(e) => { e.stopPropagation(); logout(); onToggleProfile(); }} style={{ color: '#f87171' }}>
                     <LogOut size={14} /> <span>{t.logout}</span>
                   </div>

@@ -690,8 +690,16 @@ ipcMain.handle('check-mojang', async (event, pseudo) => {
   });
 });
 
-ipcMain.handle('upload-image-to-web', async (event, { base64Data, filename, mimeType }) => {
+ipcMain.handle('upload-image-to-web', async (event, payload) => {
   try {
+    let { base64Data, filename, mimeType, filePath } = payload || {};
+
+    if (!base64Data && filePath && fs.existsSync(filePath)) {
+      const diskBuf = fs.readFileSync(filePath);
+      base64Data = diskBuf.toString('base64');
+      if (!filename) filename = path.basename(filePath);
+    }
+
     if (!base64Data) {
       return { success: false, error: "Aucune donnée de fichier." };
     }
@@ -703,44 +711,94 @@ ipcMain.handle('upload-image-to-web', async (event, { base64Data, filename, mime
       return { success: false, error: "Le fichier dépasse la taille maximale autorisée (10 Mo)." };
     }
 
-    // 2. Contrôle strict de l'extension
-    const ext = path.extname(filename || '').toLowerCase();
-    const allowedExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
-    if (!allowedExts.includes(ext)) {
-      return { success: false, error: "Extension non autorisée. Seules les images PNG, JPG, GIF et WEBP sont acceptées." };
-    }
-
-    // 3. Contrôle strict des Magic Bytes (signatures binaires) - Empêche l'injection de scripts/PHP/malwares
+    // 2. Contrôle et détection des Magic Bytes (signatures binaires)
     const isPng = buffer.length > 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
     const isJpg = buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
     const isGif = buffer.length > 4 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38;
     const isWebp = buffer.length > 12 && buffer.toString('utf8', 0, 4) === 'RIFF' && buffer.toString('utf8', 8, 12) === 'WEBP';
 
     if (!isPng && !isJpg && !isGif && !isWebp) {
-      return { success: false, error: "Signature de fichier invalide : Seules les véritables images sont acceptées. Aucune injection n'est permise." };
+      return { success: false, error: "Format non reconnu : Seules les véritables images (PNG, JPG, GIF, WEBP) sont acceptées." };
     }
 
-    // 4. Envoi sécurisé au serveur ElderSea
-    const sanitizedName = path.basename(filename || 'image.png');
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-
-    const res = await fetch('https://eldersea.tekao.fr/api/upload', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ base64Data, filename: sanitizedName }),
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-
-    const data = await res.json();
-    if (data.success && data.url) {
-      return { success: true, url: data.url };
+    const detectedExt = isPng ? '.png' : isJpg ? '.jpg' : isGif ? '.gif' : '.webp';
+    const effectiveMime = mimeType || (isPng ? 'image/png' : isJpg ? 'image/jpeg' : isGif ? 'image/gif' : 'image/webp');
+    let sanitizedName = path.basename(filename || `image${detectedExt}`);
+    if (!path.extname(sanitizedName)) {
+      sanitizedName += detectedExt;
     }
-    throw new Error(data.error || "Erreur de téléversement sur le serveur ElderSea");
+
+    // 1. Essai 1 : Serveur ElderSea officiel (si disponible)
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
+
+      const res = await fetch('https://eldersea.tekao.fr/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ base64Data, filename: sanitizedName }),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.url) {
+          console.log('[UPLOAD] Image hébergée sur ElderSea Cloud:', data.url);
+          return { success: true, url: data.url };
+        }
+      }
+    } catch (primaryErr) {}
+
+    // 2. Essai 2 : Cloud Kappa (Hébergement permanent ultra-rapide, direct et vérifié)
+    try {
+      const kappaFd = new FormData();
+      kappaFd.append('file', new Blob([buffer], { type: effectiveMime }), sanitizedName);
+      const kRes = await fetch('https://kappa.lol/api/upload', {
+        method: 'POST',
+        body: kappaFd,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      if (kRes.ok) {
+        const kData = await kRes.json();
+        if (kData && kData.link) {
+          const directUrl = kData.link.endsWith(detectedExt) ? kData.link : `${kData.link}${detectedExt}`;
+          console.log('[UPLOAD] Image hébergée avec succès sur Kappa :', directUrl);
+          return { success: true, url: directUrl };
+        }
+      }
+    } catch (kErr) {
+      console.warn('[UPLOAD KAPPA FALLBACK FAIL]', kErr.message);
+    }
+
+    // 3. Essai 3 : Cloud Uguu (Miroir haute disponibilité direct et vérifié)
+    try {
+      const uguuFd = new FormData();
+      uguuFd.append('files[]', new Blob([buffer], { type: effectiveMime }), sanitizedName);
+      const uguuRes = await fetch('https://uguu.se/upload', {
+        method: 'POST',
+        body: uguuFd,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      if (uguuRes.ok) {
+        const uData = await uguuRes.json();
+        if (uData && uData.success && uData.files && uData.files[0] && uData.files[0].url) {
+          console.log('[UPLOAD] Image hébergée avec succès sur Uguu :', uData.files[0].url);
+          return { success: true, url: uData.files[0].url };
+        }
+      }
+    } catch (uguuErr) {
+      console.error('[UPLOAD UGUU ERROR]', uguuErr.message);
+    }
+
+    throw new Error("Impossible d'héberger l'image sur les serveurs disponibles.");
   } catch (err) {
     console.error('[SECURE UPLOAD ERROR]', err.message);
     return { success: false, error: err.message };
@@ -784,6 +842,60 @@ ipcMain.handle('delete-screenshot', async (event, fullPath) => {
   }
 });
 
+let downloadSpeedTracker = {
+  bytesInPeriod: 0,
+  periodStartTime: Date.now(),
+  currentSpeed: '0 Ko/s',
+  lastActivity: Date.now()
+};
+
+let totalBytesTransferred = 0;
+
+function resetDownloadTracking() {
+  totalBytesTransferred = 0;
+  downloadSpeedTracker.bytesInPeriod = 0;
+  downloadSpeedTracker.periodStartTime = Date.now();
+  downloadSpeedTracker.currentSpeed = '0 Ko/s';
+  downloadSpeedTracker.lastActivity = Date.now();
+}
+
+function recordDownloadedBytes(bytes) {
+  if (!bytes || bytes <= 0) return;
+  totalBytesTransferred += bytes;
+  downloadSpeedTracker.bytesInPeriod += bytes;
+  downloadSpeedTracker.lastActivity = Date.now();
+  const now = Date.now();
+  const elapsed = (now - downloadSpeedTracker.periodStartTime) / 1000;
+  if (elapsed >= 0.4) {
+    const bps = downloadSpeedTracker.bytesInPeriod / elapsed;
+    downloadSpeedTracker.bytesInPeriod = 0;
+    downloadSpeedTracker.periodStartTime = now;
+    if (bps >= 1048576) {
+      downloadSpeedTracker.currentSpeed = (bps / 1048576).toFixed(1) + ' Mo/s';
+    } else if (bps >= 1024) {
+      downloadSpeedTracker.currentSpeed = Math.round(bps / 1024) + ' Ko/s';
+    } else if (bps > 0) {
+      downloadSpeedTracker.currentSpeed = Math.round(bps) + ' o/s';
+    }
+  }
+}
+
+function getCurrentDownloadSpeed() {
+  if (Date.now() - downloadSpeedTracker.lastActivity > 2000) {
+    downloadSpeedTracker.currentSpeed = '0 Ko/s';
+  }
+  return downloadSpeedTracker.currentSpeed;
+}
+
+function getBytesTransferredText() {
+  if (totalBytesTransferred >= 1048576) {
+    return (totalBytesTransferred / 1048576).toFixed(1) + ' Mo';
+  } else if (totalBytesTransferred >= 1024) {
+    return Math.round(totalBytesTransferred / 1024) + ' Ko';
+  }
+  return totalBytesTransferred > 0 ? totalBytesTransferred + ' o' : '0.0 Mo';
+}
+
 function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
     console.log(`[DL] Start: ${url}`);
@@ -800,7 +912,10 @@ function downloadFile(url, dest) {
         return;
       }
       const file = fs.createWriteStream(dest);
-      response.on('data', (chunk) => file.write(chunk));
+      response.on('data', (chunk) => {
+        file.write(chunk);
+        recordDownloadedBytes(chunk.length);
+      });
       response.on('end', () => { file.end(); resolve(); });
     });
     request.on('error', (err) => {
@@ -995,7 +1110,9 @@ async function syncHTTP(gameRoot, isVerificationOnly = false) {
                           type: 'Vérification & Téléchargement...',
                           task: completedTasks,
                           total: totalTasks,
-                          filename: filename
+                          filename: filename,
+                          speed: getCurrentDownloadSpeed(),
+                          bytesText: getBytesTransferredText()
                       });
                   }
                   mainWindow.webContents.send('verify-progress', {
@@ -1027,8 +1144,8 @@ async function syncHTTP(gameRoot, isVerificationOnly = false) {
           }
       });
 
-      // Exécuter les tâches en parallèle avec une concurrence de 10
-      await limitConcurrency(tasks, 10);
+      // Exécuter les tâches en parallèle avec une concurrence optimisée de 25
+      await limitConcurrency(tasks, 25);
       console.log("[SYNC] Synchronisation terminée avec succès.");
 
   } catch (err) {
@@ -1155,6 +1272,77 @@ async function setupPortableJava(gameRoot) {
   });
 }
 
+async function handleCheckForUpdatesManual() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+
+  // 1. Production electron-updater check
+  if (process.env.NODE_ENV !== 'development' && app.isPackaged) {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('show-toast', {
+          title: 'MISES À JOUR',
+          message: 'Recherche de mises à jour en cours...',
+          type: 'info'
+        });
+      }
+      const updateResult = await autoUpdater.checkForUpdates();
+      if (updateResult && updateResult.updateInfo && updateResult.updateInfo.version !== app.getVersion()) {
+        return { status: 'available', version: updateResult.updateInfo.version };
+      } else {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('show-toast', {
+            title: 'MISES À JOUR',
+            message: `Votre launcher est à jour ! Vous disposez de la dernière version officielle (v${app.getVersion()}).`,
+            type: 'success'
+          });
+        }
+        return { status: 'latest', version: app.getVersion() };
+      }
+    } catch (err) {
+      console.warn('[UPDATER ERROR]', err.message);
+    }
+  }
+
+  // 2. Direct GitHub Releases Verification
+  try {
+    const ghRes = await fetch('https://api.github.com/repos/shoxcx/eldersea-launcher/releases/latest', {
+      headers: { 'User-Agent': 'ElderSea-Launcher' }
+    });
+    if (ghRes.ok) {
+      const release = await ghRes.json();
+      const latestTag = (release.tag_name || release.name || '').replace(/^v/, '').trim();
+      const curVer = app.getVersion().replace(/^v/, '').trim();
+      if (latestTag && latestTag > curVer) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('show-toast', {
+            title: 'MISE À JOUR DISPONIBLE',
+            message: `Une nouvelle version d'ElderSea (v${latestTag}) est disponible !`,
+            type: 'info'
+          });
+        }
+        return { status: 'available', version: latestTag };
+      }
+    }
+  } catch (e) {}
+
+  // Fallback: launcher is up to date
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('show-toast', {
+      title: 'MISES À JOUR',
+      message: `Votre launcher est à jour ! Vous disposez de la dernière version officielle (v${app.getVersion()}).`,
+      type: 'success'
+    });
+  }
+  return { status: 'latest', version: app.getVersion() };
+}
+
+ipcMain.handle('check-for-updates-manual', async () => {
+  return await handleCheckForUpdatesManual();
+});
+
 function createTray() {
   if (tray && !tray.isDestroyed()) return;
 
@@ -1170,6 +1358,23 @@ function createTray() {
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.show();
             mainWindow.focus();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Vérification des MAJ',
+        click: async () => {
+          await handleCheckForUpdatesManual();
+        }
+      },
+      {
+        label: 'Vérification des fichiers',
+        click: () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.show();
+            mainWindow.focus();
+            mainWindow.webContents.send('trigger-verify-files');
           }
         }
       },
@@ -1208,13 +1413,14 @@ function createTray() {
   }
 }
 
-ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
+ipcMain.on('launch-game', async (event, { pseudo, ram, resolution }) => {
   if (isLaunchInProgress || isGameRunning) {
     console.log('[LAUNCH] Lancement déjà en cours ou jeu actif, clic ignoré.');
     return;
   }
   isLaunchInProgress = true;
   isGameRunning = true;
+  resetDownloadTracking();
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('game-status', true);
@@ -1264,10 +1470,71 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
       appendToLogBuffer("[WARN] Démarrage du jeu en mode hors-ligne avec les fichiers existants...");
     }
     
+    // Patch des icônes d'assets après synchronisation
+    patchMinecraftAssetIcons();
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('launch-progress', { type: 'Décollage...', task: 80, total: 100 });
     }
     appendToLogBuffer("[MCLC] Décollage imminent...");
+
+    // Résolution de la fenêtre de jeu - Toujours modulable et redimensionnable à volonté
+    let winWidth = 1280;
+    let winHeight = 720;
+    let shouldMaximize = false;
+
+    try {
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const workArea = primaryDisplay ? primaryDisplay.workAreaSize : { width: 1920, height: 1080 };
+
+      // Dimensions flottantes de sécurité pour que la fenêtre soit TOUJOURS manipulable et visible
+      const safeMaxWidth = Math.max(900, workArea.width - 64);
+      const safeMaxHeight = Math.max(600, workArea.height - 80);
+
+      if (resolution === 'fullscreen') {
+        shouldMaximize = true;
+        winWidth = safeMaxWidth;
+        winHeight = safeMaxHeight;
+      } else if (resolution === 'auto' || !resolution) {
+        shouldMaximize = false;
+        winWidth = Math.min(1280, safeMaxWidth);
+        winHeight = Math.min(720, safeMaxHeight);
+      } else if (typeof resolution === 'string' && resolution.includes('x')) {
+        const parts = resolution.split('x').map(p => parseInt(p.trim(), 10));
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          const reqW = parts[0];
+          const reqH = parts[1];
+          // Si la résolution demandée (ex: 4K 3840x2160, 2K, etc.) égale ou dépasse l'écran,
+          // on maximise proprement la fenêtre tout en conservant la barre de titre et les poignées de redimensionnement
+          if (reqW >= workArea.width || reqH >= workArea.height) {
+            shouldMaximize = true;
+            winWidth = safeMaxWidth;
+            winHeight = safeMaxHeight;
+          } else {
+            shouldMaximize = false;
+            winWidth = reqW;
+            winHeight = reqH;
+          }
+        }
+      }
+    } catch (e) {
+      winWidth = 1280;
+      winHeight = 720;
+    }
+
+    // Synchronisation avec options.txt : Toujours fenêtré modulable et jamais bloqué en plein écran exclusif
+    try {
+      const optionsTxtPath = path.join(GAME_ROOT, 'options.txt');
+      if (fs.existsSync(optionsTxtPath)) {
+        let optContent = fs.readFileSync(optionsTxtPath, 'utf8');
+        optContent = optContent.replace(/fullscreen:(false|true)/g, 'fullscreen:false');
+        optContent = optContent.replace(/overrideWidth:\d+/g, 'overrideWidth:0');
+        optContent = optContent.replace(/overrideHeight:\d+/g, 'overrideHeight:0');
+        fs.writeFileSync(optionsTxtPath, optContent, 'utf8');
+      }
+    } catch (e) {
+      console.warn('[OPTIONS] Échec de la synchronisation fullscreen:', e.message);
+    }
 
     // Pour Forge 1.20.1, on utilise l'ID de version forge correspondant
     const forgeVersion = "1.20.1-forge-47.4.20"; 
@@ -1311,10 +1578,21 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
       root: GAME_ROOT,
       version: { number: "1.20.1", type: "release", custom: "1.20.1-forge-47.4.20" },
       memory: { max: `${ram}G`, min: "2G" },
-      window: { title: "ElderSea RPG 1.20.1", width: 1280, height: 720 },
+      window: { 
+        title: "ElderSea RPG 1.20.1", 
+        width: winWidth, 
+        height: winHeight,
+        fullscreen: false 
+      },
       javaPath: javaExecutable,
       customArgs: [
         "-XX:-ShowMessageBoxOnError",
+        "-XX:+UnlockExperimentalVMOptions",
+        "-XX:+UseG1GC",
+        "-XX:G1NewSizePercent=20",
+        "-XX:G1ReservePercent=20",
+        "-XX:MaxGCPauseMillis=50",
+        "-XX:G1HeapRegionSize=32M",
         "-DlibraryDirectory=" + libsDir,
         "-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,forge-,1.20.1-forge-47.4.20.jar",
         "-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar",
@@ -1392,7 +1670,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
                 createTray();
               }
             }
-            applyMinecraftWindowIcon(activeMinecraftProcess?.pid);
+            applyMinecraftWindowIcon(activeMinecraftProcess?.pid, shouldMaximize);
             triggerDeliverPendingPurchases(pseudo);
         }
     });
@@ -1435,7 +1713,9 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('launch-progress', {
             ...globalMclcProgress,
-            filename: null
+            filename: null,
+            speed: getCurrentDownloadSpeed(),
+            bytesText: getBytesTransferredText()
           });
         }
         appendToLogBuffer(`[MCLC] Progression: ${e.type} (${e.task}/${e.total})`);
@@ -1443,16 +1723,25 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     });
     
     let lastDlTick = 0;
+    let lastMclcFileBytes = {};
     launcher.on('download-status', (e) => {
+        const prev = lastMclcFileBytes[e.name] || 0;
+        if (e.current > prev) {
+          recordDownloadedBytes(e.current - prev);
+        }
+        lastMclcFileBytes[e.name] = e.current;
+
         const now = Date.now();
-        if (now - lastDlTick > 120 || e.current === e.total) {
+        if (now - lastDlTick > 100 || e.current === e.total) {
           lastDlTick = now;
           if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('launch-progress', {
                   ...globalMclcProgress,
                   fileCurrent: e.current,
                   fileTotal: e.total,
-                  filename: e.name
+                  filename: e.name,
+                  speed: getCurrentDownloadSpeed(),
+                  bytesText: getBytesTransferredText()
               });
           }
           appendToLogBuffer(`[DL] ${e.type}: ${e.name} (${e.current}/${e.total})`);
@@ -1462,6 +1751,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     launcher.on('close', (code) => {
         isLaunchInProgress = false;
         isGameRunning = false;
+        isIconWatcherRunning = false;
         activeMinecraftProcess = null;
         setDiscordActivity('Dans le launcher', 'Prêt à naviguer');
 
@@ -1507,7 +1797,7 @@ ipcMain.on('launch-game', async (event, { pseudo, ram }) => {
     patchMinecraftAssetIcons();
     activeMinecraftProcess = await launcher.launch(opts);
     if (activeMinecraftProcess && activeMinecraftProcess.pid) {
-      applyMinecraftWindowIcon(activeMinecraftProcess.pid);
+      applyMinecraftWindowIcon(activeMinecraftProcess.pid, shouldMaximize);
     }
     
   } catch (error) {
@@ -1644,9 +1934,7 @@ function triggerDeliverPendingPurchases(pseudo) {
   }
 }
 
-let hasPatchedAssetIcons = false;
 function patchMinecraftAssetIcons() {
-  if (hasPatchedAssetIcons) return;
   try {
     const physicalIcon = getPhysicalIconPath();
     if (!fs.existsSync(physicalIcon)) return;
@@ -1688,14 +1976,13 @@ function patchMinecraftAssetIcons() {
         console.warn(`[ICON PATCH] Erreur lors du patch de l'index ${file}:`, err.message);
       }
     }
-    hasPatchedAssetIcons = true;
   } catch (err) {
     console.error('[ICON PATCH ERROR]', err);
   }
 }
 
 let isIconWatcherRunning = false;
-function applyMinecraftWindowIcon(targetPid = null) {
+function applyMinecraftWindowIcon(targetPid = null, shouldMaximize = false) {
   if (process.platform !== 'win32') return;
   if (isIconWatcherRunning) return;
   isIconWatcherRunning = true;
@@ -1709,11 +1996,12 @@ function applyMinecraftWindowIcon(targetPid = null) {
   const scriptPath = path.join(GAME_ROOT, 'apply-icon.ps1');
   const escapedIconPath = physicalIcon.replace(/'/g, "''");
   const pidParam = (targetPid && Number.isInteger(targetPid)) ? targetPid : 0;
+  const maxParam = shouldMaximize ? '$true' : '$false';
 
   const psScript = `
-param([int]$TargetPid = ${pidParam})
+param([int]$TargetPid = ${pidParam}, [bool]$ShouldMaximize = ${maxParam})
 
-Add-Type -TypeDefinition @"
+$csharp = @'
 using System;
 using System.Text;
 using System.Collections.Generic;
@@ -1725,6 +2013,13 @@ public class Win32IconHelper {
     public const int ICON_BIG = 1;
     public const int GCLP_HICON = -14;
     public const int GCLP_HICONSM = -34;
+    public const int GWL_STYLE = -16;
+    public const long WS_POPUP = 0x80000000L;
+    public const long WS_CAPTION = 0x00C00000L;
+    public const long WS_THICKFRAME = 0x00040000L;
+    public const long WS_MINIMIZEBOX = 0x00020000L;
+    public const long WS_MAXIMIZEBOX = 0x00010000L;
+    public const long WS_SYSMENU = 0x00080000L;
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
@@ -1743,6 +2038,45 @@ public class Win32IconHelper {
             return SetClassLongPtr64(hWnd, nIndex, dwNewLong);
         else
             return SetClassLong32(hWnd, nIndex, dwNewLong);
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")]
+    private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
+    public static IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex) {
+        if (IntPtr.Size == 8) return GetWindowLongPtr64(hWnd, nIndex);
+        else return new IntPtr(GetWindowLong(hWnd, nIndex));
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")]
+    private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    public static IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong) {
+        if (IntPtr.Size == 8) return SetWindowLongPtr64(hWnd, nIndex, dwNewLong);
+        else return new IntPtr(SetWindowLong(hWnd, nIndex, dwNewLong.ToInt32()));
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
 
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
@@ -1764,6 +2098,27 @@ public class Win32IconHelper {
 
     [DllImport("user32.dll")]
     public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    public static void MakeWindowModulable(IntPtr hWnd, bool shouldMaximize) {
+        try {
+            long style = GetWindowLongPtr(hWnd, GWL_STYLE).ToInt64();
+            long required = WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU;
+            long newStyle = (style & ~WS_POPUP) | required;
+            if (newStyle != style) {
+                SetWindowLongPtr(hWnd, GWL_STYLE, new IntPtr(newStyle));
+                SetWindowPos(hWnd, IntPtr.Zero, 0, 0, 0, 0, 0x0027); // SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER
+            }
+            RECT rect;
+            if (GetWindowRect(hWnd, out rect)) {
+                if (rect.Top < 0) {
+                    SetWindowPos(hWnd, IntPtr.Zero, Math.Max(0, rect.Left), 20, 0, 0, 0x0001 | 0x0004 | 0x0040); // SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW
+                }
+            }
+            if (shouldMaximize) {
+                ShowWindow(hWnd, 3); // SW_MAXIMIZE
+            }
+        } catch {}
+    }
 
     public static IntPtr[] FindMatchingWindows(uint[] pids) {
         var list = new List<IntPtr>();
@@ -1790,9 +2145,11 @@ public class Win32IconHelper {
             GetClassName(hWnd, cb, 256);
             string className = cb.ToString();
 
-            if (className == "GLFW30" || className == "SunAwtFrame") {
-                list.Add(hWnd);
-            } else if (pidMatch && (!string.IsNullOrEmpty(title) || className.StartsWith("GLFW"))) {
+            if (pidMatch) {
+                if (className == "GLFW30" || className.StartsWith("GLFW") || className == "SunAwtFrame" || !string.IsNullOrEmpty(title)) {
+                    list.Add(hWnd);
+                }
+            } else if (className == "GLFW30" || className == "SunAwtFrame") {
                 list.Add(hWnd);
             } else if (!string.IsNullOrEmpty(title)) {
                 if (title.IndexOf("Minecraft", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -1807,7 +2164,11 @@ public class Win32IconHelper {
         return list.ToArray();
     }
 }
-"@
+'@
+
+try {
+    Add-Type -TypeDefinition $csharp -ErrorAction Stop
+} catch {}
 Add-Type -AssemblyName System.Drawing
 
 $iconPath = '${escapedIconPath}'
@@ -1820,11 +2181,11 @@ try {
     $hIconSmall = $bmpSmall.GetHicon()
     $hIconBig = $bmpBig.GetHicon()
 
-    $appliedCount = 0
     $noProcessCount = 0
+    $appliedModulable = @{}
 
-    # Monitor up to 180 seconds (3 minutes) to guarantee catching Forge window initialization
-    for ($i = 0; $i -lt 180; $i++) {
+    # Surveille le jeu en continu tant que le processus Java tourne
+    while ($true) {
         $procs = Get-Process -Name "javaw","java" -ErrorAction SilentlyContinue
         if (-not $procs) {
             $noProcessCount++
@@ -1841,18 +2202,19 @@ try {
         if ($windows.Length -gt 0) {
             foreach ($hwnd in $windows) {
                 $outRes = [IntPtr]::Zero
-                [Win32IconHelper]::SendMessageTimeout($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_SMALL, $hIconSmall, 2, 800, [ref]$outRes)
-                [Win32IconHelper]::SendMessageTimeout($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_BIG, $hIconBig, 2, 800, [ref]$outRes)
+                [Win32IconHelper]::SendMessageTimeout($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_SMALL, $hIconSmall, 2, 500, [ref]$outRes)
+                [Win32IconHelper]::SendMessageTimeout($hwnd, [Win32IconHelper]::WM_SETICON, [Win32IconHelper]::ICON_BIG, $hIconBig, 2, 500, [ref]$outRes)
                 [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICON, $hIconBig)
                 [Win32IconHelper]::SetClassLongPtr($hwnd, [Win32IconHelper]::GCLP_HICONSM, $hIconSmall)
                 [Win32IconHelper]::SetWindowText($hwnd, "ElderSea RPG 1.20.1")
+
+                $hwndKey = $hwnd.ToString()
+                if (-not $appliedModulable.ContainsKey($hwndKey)) {
+                    [Win32IconHelper]::MakeWindowModulable($hwnd, $ShouldMaximize)
+                    $appliedModulable[$hwndKey] = $true
+                }
             }
-            $appliedCount++
-            # Once applied consistently for 6 cycles (~10 seconds after window creation), exit cleanly
-            if ($appliedCount -ge 6) {
-                break
-            }
-            Start-Sleep -Milliseconds 1500
+            Start-Sleep -Milliseconds 2500
         } else {
             Start-Sleep -Milliseconds 1000
         }
@@ -1865,7 +2227,7 @@ try {
 
   try {
     fs.writeFileSync(scriptPath, psScript, 'utf8');
-    const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -TargetPid ${pidParam}`;
+    const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -TargetPid ${pidParam} -ShouldMaximize ${maxParam}`;
     exec(cmd, (err) => {
       isIconWatcherRunning = false;
       if (err) console.error('[ICON ERROR] Failed to run icon script:', err.message);

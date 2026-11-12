@@ -15,16 +15,42 @@ const ProfileView = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [status, setStatus] = useState({ type: '', msg: '' });
   const [isPremium, setIsPremium] = useState(false);
+  const [liveRank, setLiveRank] = useState(user?.rank || '');
 
   React.useEffect(() => {
     const checkStatus = async () => {
       if (user?.pseudo) {
         const result = await window.ipcRenderer.invoke('check-mojang', user.pseudo);
         setIsPremium(result);
+        try {
+          const res = await fetch('https://eldersea.tekao.fr/api/users');
+          if (res.ok) {
+            const list = await res.json();
+            const found = list.find(u => u && u.pseudo && u.pseudo.toLowerCase() === user.pseudo.toLowerCase());
+            if (found && found.rank) {
+              setLiveRank(found.rank);
+            }
+          }
+        } catch (e) {}
       }
     };
     checkStatus();
   }, [user]);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString(language === 'en' ? 'en-US' : 'fr-FR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+    } catch (e) {
+      return dateStr;
+    }
+  };
 
   if (!user) return null;
 
@@ -83,14 +109,28 @@ const ProfileView = () => {
             />
           </div>
           
-          <h3 className="cinzel" style={{ fontSize: '22px', color: 'white', marginBottom: '5px', letterSpacing: '1px' }}>{user.pseudo}</h3>
-          <div style={{ 
-            display: 'flex', alignItems: 'center', gap: '8px', 
-            background: isPremium ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)', 
-            color: isPremium ? '#34d399' : '#f87171', 
-            padding: '6px 15px', borderRadius: '99px', fontSize: '11px', fontWeight: 800 
-          }}>
-            <ShieldCheck size={14} /> {isPremium ? 'PREMIUM ACCOUNT' : 'CRACK ACCOUNT'}
+          <h3 className="cinzel" style={{ fontSize: '22px', color: 'white', marginBottom: '8px', letterSpacing: '1px' }}>{user.pseudo}</h3>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {liveRank && (
+              <div style={{ 
+                display: 'flex', alignItems: 'center', gap: '6px', 
+                background: 'rgba(212,175,55,0.15)', 
+                color: '#f3e5ab',
+                border: '1px solid rgba(212,175,55,0.3)',
+                padding: '6px 14px', borderRadius: '99px', fontSize: '11px', fontWeight: 800,
+                textTransform: 'uppercase', letterSpacing: '1px'
+              }}>
+                <ShieldCheck size={14} color="#d4af37" /> {liveRank}
+              </div>
+            )}
+            <div style={{ 
+              display: 'flex', alignItems: 'center', gap: '8px', 
+              background: isPremium ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)', 
+              color: isPremium ? '#34d399' : '#f87171', 
+              padding: '6px 15px', borderRadius: '99px', fontSize: '11px', fontWeight: 800 
+            }}>
+              <ShieldCheck size={14} /> {isPremium ? 'PREMIUM ACCOUNT' : 'CRACK ACCOUNT'}
+            </div>
           </div>
 
           <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.05)', margin: '30px 0' }}></div>
@@ -102,7 +142,7 @@ const ProfileView = () => {
             </div>
             <div className="profile-info-row">
               <label style={labelStyle}><Calendar size={14} /> {t.created_at}</label>
-              <div style={valStyle}>{user.createdAt}</div>
+              <div style={valStyle}>{formatDate(user.createdAt)}</div>
             </div>
           </div>
         </div>

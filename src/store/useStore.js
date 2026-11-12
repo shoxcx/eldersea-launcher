@@ -3,20 +3,79 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 export const useAuthStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       isLoggedIn: false,
-      login: (pseudo, email = 'player@eldersea.io', createdAt = null) => set({ 
-        user: { 
+      accounts: [],
+      login: (pseudo, email = 'player@eldersea.io', createdAt = null) => {
+        const currentAccounts = get().accounts || [];
+        const accountObj = { 
           pseudo, 
-          email, 
+          email: email || 'player@eldersea.io', 
           createdAt: createdAt || new Date().toLocaleDateString(),
-          isPremium: true 
-        }, 
-        isLoggedIn: true 
+          isPremium: true,
+          lastUsed: Date.now()
+        };
+        const filtered = currentAccounts.filter(
+          a => (a.pseudo || '').toLowerCase() !== (pseudo || '').toLowerCase()
+        );
+        const newAccounts = [accountObj, ...filtered];
+        set({ 
+          user: accountObj, 
+          isLoggedIn: true,
+          accounts: newAccounts
+        });
+      },
+      switchAccount: (pseudo) => {
+        const accounts = get().accounts || [];
+        const target = accounts.find(a => (a.pseudo || '').toLowerCase() === (pseudo || '').toLowerCase());
+        if (target) {
+          const updated = accounts.map(a => 
+            (a.pseudo || '').toLowerCase() === (pseudo || '').toLowerCase()
+              ? { ...a, lastUsed: Date.now() }
+              : a
+          );
+          set({
+            user: { ...target, lastUsed: Date.now() },
+            isLoggedIn: true,
+            accounts: updated
+          });
+          return true;
+        }
+        return false;
+      },
+      removeAccount: (pseudo) => {
+        const accounts = get().accounts || [];
+        const filtered = accounts.filter(a => (a.pseudo || '').toLowerCase() !== (pseudo || '').toLowerCase());
+        const currentUser = get().user;
+        if (currentUser && (currentUser.pseudo || '').toLowerCase() === (pseudo || '').toLowerCase()) {
+          if (filtered.length > 0) {
+            set({ user: filtered[0], isLoggedIn: true, accounts: filtered });
+          } else {
+            set({ user: null, isLoggedIn: false, accounts: [] });
+          }
+        } else {
+          set({ accounts: filtered });
+        }
+      },
+      logout: () => {
+        const accounts = get().accounts || [];
+        const currentUser = get().user;
+        const filtered = accounts.filter(a => (a.pseudo || '').toLowerCase() !== (currentUser?.pseudo || '').toLowerCase());
+        if (filtered.length > 0) {
+          set({ user: filtered[0], isLoggedIn: true, accounts: filtered });
+        } else {
+          set({ user: null, isLoggedIn: false, accounts: [] });
+        }
+      },
+      logoutAll: () => set({ user: null, isLoggedIn: false, accounts: [] }),
+      updateUser: (newData) => set((state) => {
+        const updatedUser = { ...state.user, ...newData };
+        const updatedAccounts = (state.accounts || []).map(a => 
+          (a.pseudo || '').toLowerCase() === (updatedUser.pseudo || '').toLowerCase() ? updatedUser : a
+        );
+        return { user: updatedUser, accounts: updatedAccounts };
       }),
-      logout: () => set({ user: null, isLoggedIn: false }),
-      updateUser: (newData) => set((state) => ({ user: { ...state.user, ...newData } })),
       rememberedDevices: {},
       rememberDevice: (pseudo) => set((state) => ({
         rememberedDevices: {
@@ -27,7 +86,16 @@ export const useAuthStore = create(
     }),
     { 
       name: 'eldersea-auth',
-      storage: createJSONStorage(() => localStorage)
+      storage: createJSONStorage(() => localStorage),
+      onRehydrateStorage: () => (state) => {
+        if (state && state.user) {
+          const accs = Array.isArray(state.accounts) ? state.accounts : [];
+          const exists = accs.some(a => (a.pseudo || '').toLowerCase() === (state.user.pseudo || '').toLowerCase());
+          if (!exists) {
+            state.accounts = [state.user, ...accs];
+          }
+        }
+      }
     }
   )
 );
@@ -36,12 +104,14 @@ export const useSettingsStore = create(
   persist(
     (set) => ({
       ram: 6,
+      resolution: '1280x720',
       language: 'fr',
       launchOnStartup: false,
       backgroundMode: true,
       showConsole: false,
       installPath: 'C:\\Users\\User\\AppData\\Roaming\\.eldersea',
       setRam: (ram) => set({ ram }),
+      setResolution: (resolution) => set({ resolution }),
       setLanguage: (language) => set({ language }),
       setLaunchOnStartup: (launchOnStartup) => set({ launchOnStartup }),
       setBackgroundMode: (backgroundMode) => set({ backgroundMode }),

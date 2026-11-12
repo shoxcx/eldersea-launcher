@@ -70,7 +70,7 @@ const isMediaOnly = (text) => {
   return emojiRegex.test(t);
 };
 
-const renderMessageContent = (text) => {
+const renderMessageContent = (text, onImageClick) => {
   const cleaned = cleanGiphyUrl(text);
   const t = cleaned.trim();
   if (t.startsWith('http')) {
@@ -81,12 +81,18 @@ const renderMessageContent = (text) => {
           src={t} 
           alt="custom emoji" 
           referrerPolicy="no-referrer"
+          onClick={() => onImageClick && onImageClick(t)}
+          title={onImageClick ? "Cliquer pour agrandir" : undefined}
           style={{ 
             width: '80px', 
             height: '80px', 
             objectFit: 'contain',
-            display: 'block'
+            display: 'block',
+            cursor: onImageClick ? 'zoom-in' : 'default',
+            transition: 'transform 0.15s ease'
           }} 
+          onMouseEnter={(e) => { if (onImageClick) e.currentTarget.style.transform = 'scale(1.08)'; }}
+          onMouseLeave={(e) => { if (onImageClick) e.currentTarget.style.transform = 'scale(1)'; }}
         />
       );
     } else {
@@ -95,12 +101,28 @@ const renderMessageContent = (text) => {
           src={t} 
           alt="media" 
           referrerPolicy="no-referrer"
+          onClick={() => onImageClick && onImageClick(t)}
+          title={onImageClick ? "Cliquer pour agrandir" : undefined}
           style={{ 
             maxWidth: '100%', 
             borderRadius: '8px', 
-            maxHeight: '160px', 
-            display: 'block'
+            maxHeight: '180px', 
+            display: 'block',
+            cursor: onImageClick ? 'zoom-in' : 'default',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease'
           }} 
+          onMouseEnter={(e) => { 
+            if (onImageClick) {
+              e.currentTarget.style.transform = 'scale(1.02)';
+              e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.5)';
+            }
+          }}
+          onMouseLeave={(e) => { 
+            if (onImageClick) {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = 'none';
+            }
+          }}
         />
       );
     }
@@ -441,6 +463,18 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       };
     }
     return fallback;
+  };
+
+  const getRankColor = (rank) => {
+    if (!rank) return 'var(--purple-light)';
+    const r = String(rank).toLowerCase();
+    if (r.includes('seigneur') || r.includes('admin')) return '#6d90f8';
+    if (r.includes('corsaire')) return '#ef4444';
+    if (r.includes('empereur')) return '#f59e0b';
+    if (r.includes('guide') || r.includes('builder')) return '#ec4899';
+    if (r.includes('juge')) return '#22c55e';
+    if (r.includes('pirate') || r.includes('matelot')) return '#d4af37';
+    return '#a78bfa';
   };
 
   const performWebAction = async (actionType, targetUser, text = '') => {
@@ -891,7 +925,17 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
       <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '25px', flex: 1, minHeight: 0 }}>
         
         {/* ── LEFT COLUMN: FRIENDS LIST ── */}
-        <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '20px' }}>
+        <div className="glass-panel" style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          overflow: 'hidden', 
+          padding: '20px',
+          background: 'rgba(15, 20, 32, 0.65)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)'
+        }}>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', flexShrink: 0 }}>
             <Users size={14} color="var(--purple-light)" />
@@ -989,7 +1033,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
                             }} 
                           />
                         </div>
-                        <div style={{ fontSize: '9px', color: 'var(--purple-light)', fontWeight: 600 }}>{details.rank}</div>
+                        <div style={{ fontSize: '9px', color: getRankColor(details.rank), fontWeight: 700 }}>{details.rank}</div>
                       </div>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleDeleteFriend(pseudo); }}
@@ -1007,12 +1051,21 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
         </div>
 
         {/* ── RIGHT COLUMN: ACTIVE CHAT ── */}
-        <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="glass-panel" style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          overflow: 'hidden',
+          background: 'rgba(15, 20, 32, 0.65)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)'
+        }}>
           {activeChatFriend ? (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               
               {/* Chat Header */}
-              <div style={{ padding: '15px 25px', borderBottom: '1px solid var(--border)', background: 'rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ padding: '15px 25px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <img 
                     src={activeDetails.avatar} 
@@ -1034,7 +1087,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
                       />
                     </div>
                     <div style={{ fontSize: '10px', color: 'var(--text-dim)', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <span>Grade : <strong style={{ color: 'var(--crystal)' }}>{activeDetails.rank}</strong></span>
+                      <span>Grade : <strong style={{ color: getRankColor(activeDetails.rank) }}>{activeDetails.rank}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -1058,8 +1111,10 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
                         }}
                       >
                         <div style={{
-                          background: isMediaOnly(m.message) ? 'transparent' : (isMe ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.03)'),
-                          border: isMediaOnly(m.message) ? 'none' : (isMe ? '1px solid rgba(168,85,247,0.3)' : '1px solid var(--border)'),
+                          background: isMediaOnly(m.message) ? 'transparent' : (isMe ? 'rgba(168,85,247,0.22)' : 'rgba(255,255,255,0.06)'),
+                          backdropFilter: isMediaOnly(m.message) ? 'none' : 'blur(8px)',
+                          WebkitBackdropFilter: isMediaOnly(m.message) ? 'none' : 'blur(8px)',
+                          border: isMediaOnly(m.message) ? 'none' : (isMe ? '1px solid rgba(168,85,247,0.35)' : '1px solid rgba(255,255,255,0.08)'),
                           borderRadius: '12px',
                           borderBottomRightRadius: isMe ? '2px' : '12px',
                           borderBottomLeftRadius: isMe ? '12px' : '2px',
@@ -1067,9 +1122,9 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
                           fontSize: '11.5px',
                           color: '#fff',
                           lineHeight: '1.4',
-                          boxShadow: isMediaOnly(m.message) ? 'none' : undefined
+                          boxShadow: isMediaOnly(m.message) ? 'none' : '0 4px 15px rgba(0,0,0,0.2)'
                         }}>
-                          {renderMessageContent(m.message)}
+                          {renderMessageContent(m.message, setFullscreen)}
                         </div>
                         <div style={{ 
                           fontSize: '8.5px', 
@@ -1088,7 +1143,7 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
               </div>
 
               {/* Chat Input */}
-              <form onSubmit={handleSendMessage} style={{ position: 'relative', padding: '15px 25px', borderTop: '1px solid var(--border)', display: 'flex', gap: '12px', alignItems: 'center', background: 'rgba(0,0,0,0.1)', flexShrink: 0 }}>
+              <form onSubmit={handleSendMessage} style={{ position: 'relative', padding: '15px 25px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: '12px', alignItems: 'center', background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(8px)', flexShrink: 0 }}>
                 
                 {/* Floating Spam Error */}
                 {spamError && (
@@ -1515,7 +1570,8 @@ const FriendsView = ({ setFullscreen, activeChatFriend, setActiveChatFriend, onI
                   onChange={(e) => setMessageText(e.target.value)}
                   style={{
                     flex: 1, padding: '12px 16px', fontSize: '11.5px', borderRadius: '8px',
-                    background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)', color: '#fff', outline: 'none'
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', outline: 'none',
+                    backdropFilter: 'blur(6px)'
                   }}
                 />
 
